@@ -1,0 +1,57 @@
+{
+  "id": "facebook_avatar_minimal",
+  "name": "FB Avatar - Minimal",
+  "platform": "facebook",
+  "imageType": "facebook_avatar",
+  "width": 800,
+  "height": 800,
+  "background": "#6366f1",
+  "mainTextId": "initials",
+  "elements": [
+    {
+      "id": "bg",
+      "type": "rect",
+      "x": 0,
+      "y": 0,
+      "width": 800,
+      "height": 800,
+      "fill": "#6366f1",
+      "cornerRadius": 0,
+      "draggable": false,
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "circle",
+      "type": "rect",
+      "x": 100,
+      "y": 100,
+      "width": 600,
+      "height": 600,
+      "fill": "#ffffff",
+      "cornerRadius": 300,
+      "draggable": false,
+      "visible": true,
+      "opacity": 0.15
+    },
+    {
+      "id": "initials",
+      "type": "text",
+      "x": 0,
+      "y": 200,
+      "text": "AB",
+      "fontSize": 320,
+      "fontFamily": "Poppins",
+      "color": "#ffffff",
+      "stroke": "",
+      "strokeWidth": 0,
+      "fontStyle": "bold",
+      "align": "center",
+      "width": 800,
+      "draggable": true,
+      "visible": true,
+      "opacity": 1
+    }
+  ],
+  "previewUrl": "https://picsum.photos/seed/fb-avatar/400/400"
+}
