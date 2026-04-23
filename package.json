@@ -1,0 +1,19 @@
+{
+  "name": "thumbnail-fastee",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:web": "npm --workspace frontend run dev",
+    "dev:api": "npm --workspace backend run dev",
+    "build": "npm --workspace backend run build && npm --workspace frontend run build",
+    "db:migrate": "npm --workspace backend run db:migrate",
+    "db:migrate:undo": "npm --workspace backend run db:migrate:undo"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

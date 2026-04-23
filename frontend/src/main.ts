@@ -6,6 +6,7 @@ import App from './App.vue'
 import './assets/main.css'
 import 'bootstrap-icons/font/bootstrap-icons.css'
 import '@fortawesome/fontawesome-free/css/all.min.css'
+import { initAuth } from '@/composables/useAuth'
 
 const app = createApp(App)
 
@@ -14,3 +15,5 @@ app.use(VueKonva)
 app.use(router)
 
 app.mount('#app')
+
+void initAuth()

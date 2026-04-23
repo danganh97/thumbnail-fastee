@@ -64,6 +64,7 @@ export function useCanvas(
   canvasWidth:     Ref<number>,
   canvasHeight:    Ref<number>,
   backgroundColor: Ref<string>,
+  readOnly:        Ref<boolean>,
   options:         UseCanvasOptions = {},
 ) {
   const stage       = ref<Konva.Stage | null>(null)
@@ -91,7 +92,7 @@ export function useCanvas(
     stage.value.add(layer.value as any)
 
     transformer.value = new Konva.Transformer({
-      rotateEnabled:      true,
+      rotateEnabled:      !readOnly.value,
       rotationSnaps:      [0, 45, 90, 135, 180, 225, 270, 315],
       borderStroke:       '#6366f1',
       borderStrokeWidth:  2,
@@ -313,7 +314,7 @@ export function useCanvas(
       textDecoration: el.textDecoration === 'underline' ? 'underline' : '',
       align:       el.align,
       width:       el.width,
-      draggable:   el.draggable,
+      draggable:   el.draggable && !readOnly.value,
       visible:     el.visible,
       opacity:     el.opacity,
       rotation:    el.rotation ?? 0,
@@ -333,7 +334,7 @@ export function useCanvas(
       y:         el.y + hh,
       width:     el.width,
       height:    el.height,
-      draggable: el.draggable,
+      draggable: el.draggable && !readOnly.value,
       visible:   el.visible,
       opacity:   el.opacity,
       rotation:  el.rotation ?? 0,
@@ -367,7 +368,7 @@ export function useCanvas(
       width:        el.width,
       height:       el.height,
       cornerRadius: el.cornerRadius,
-      draggable:    el.draggable,
+      draggable:    el.draggable && !readOnly.value,
       visible:      el.visible,
       opacity:      el.opacity,
       rotation:     el.rotation ?? 0,
@@ -392,7 +393,7 @@ export function useCanvas(
       fontStyle:  'normal',
       width:      el.width,
       align:      'center',
-      draggable:  el.draggable,
+      draggable:  el.draggable && !readOnly.value,
       visible:    el.visible,
       opacity:    el.opacity,
       rotation:   el.rotation ?? 0,
@@ -414,7 +415,7 @@ export function useCanvas(
   }
 
   function attachEvents(node: Konva.Shape, el: TemplateElement): void {
-    if (el.draggable) {
+    if (!readOnly.value && el.draggable) {
       node.on('dragmove', () => {
         snapAndGuide(node)
       })
@@ -457,6 +458,24 @@ export function useCanvas(
           return
         }
 
+        if (el.type === 'icon') {
+          // Icons are rendered as glyph text; keep their anchor at top-left.
+          const scaledSize = Math.max(8, Math.round(el.size * Math.abs(effectiveScaleY)))
+          attrs.size = scaledSize
+          if (el.width !== undefined) {
+            attrs.width = Math.max(8, Math.round(el.width * Math.abs(effectiveScaleX)))
+          }
+          if (el.height !== undefined) {
+            attrs.height = Math.max(8, Math.round(el.height * Math.abs(effectiveScaleY)))
+          }
+          node.scaleX(1)
+          node.scaleY(1)
+          attrs.x = node.x()
+          attrs.y = node.y()
+          options.onElementTransformEnd?.(el.id, attrs)
+          return
+        }
+
         if (effectiveScaleX !== 1 || effectiveScaleY !== 1) {
           const w = (node as Konva.Rect).width?.()
           const h = (node as Konva.Rect).height?.()
@@ -490,6 +509,7 @@ export function useCanvas(
     })
 
     node.on('contextmenu', (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (readOnly.value) return
       e.evt.preventDefault()
       e.cancelBubble = true
       selectNode(node)
@@ -499,6 +519,7 @@ export function useCanvas(
     // Double-click to edit text inline
     if (el.type === 'text') {
       node.on('dblclick dbltap', (e: Konva.KonvaEventObject<MouseEvent>) => {
+        if (readOnly.value) return
         e.cancelBubble = true
         options.onTextDblClick?.(el.id)
       })
@@ -554,6 +575,13 @@ export function useCanvas(
   watch(selectedId,                         () => { syncSelection() })
   watch([canvasWidth, canvasHeight],        () => { resizeStage()   })
   watch(backgroundColor, () => { syncBackground() })
+  watch(readOnly, () => {
+    if (transformer.value) {
+      transformer.value.rotateEnabled(!readOnly.value)
+      if (readOnly.value) transformer.value.nodes([])
+    }
+    syncElements()
+  })
 
   return { stage, layer, transformer, init, syncElements, syncBackground, syncSelection, resizeStage }
 }

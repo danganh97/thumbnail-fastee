@@ -3,12 +3,13 @@ import { ref, computed } from 'vue'
 import { v4 as uuid } from 'uuid'
 import type {
   Platform, ImageType, Template, TemplateElement,
-  TextElement, ImageElement, RectElement, IconElement, PaintStyle, PlatformId, ImageTypeId,
+  TextElement, ImageElement, RectElement, IconElement, PaintStyle, PlatformId, ImageTypeId, ShareEditorPayload,
 } from '@/types'
 import { PLATFORMS, IMAGE_TYPES, PLATFORM_IMAGE_TYPES } from '@/types'
 
 const MAX_HISTORY = 50
-const TEXT_ICON_COLOR_MODE_KEY = 'fastee-text-icon-color-mode'
+const TEXT_ICON_DEFAULT_COLOR_KEY = 'fastee-text-icon-default-color'
+const LEGACY_TEXT_ICON_COLOR_MODE_KEY = 'fastee-text-icon-color-mode'
 
 const ICON_LIBRARY_ENTRIES: Record<'bootstrap' | 'fontawesome', string[]> = {
   bootstrap: ['heart-fill', 'star-fill', 'lightning-fill', 'camera-fill', 'megaphone-fill'],
@@ -46,8 +47,6 @@ interface PersistedDraft {
   elements: TemplateElement[]
 }
 
-type TextIconColorMode = 'dark' | 'light'
-
 export const useEditorStore = defineStore('editor', () => {
   // ── State ──────────────────────────────────────────────────────────────────
   const currentPlatform  = ref<Platform | null>(null)
@@ -61,9 +60,10 @@ export const useEditorStore = defineStore('editor', () => {
   const isDirty          = ref(false)
   const exportFormat     = ref<'png' | 'jpeg'>('png')
   const exportQuality    = ref(0.92)
-  const textIconColorMode = ref<TextIconColorMode>(
-    localStorage.getItem(TEXT_ICON_COLOR_MODE_KEY) === 'light' ? 'light' : 'dark',
-  )
+  const textIconDefaultColor = ref<string>(initialTextIconDefaultColor())
+  const activeEditorId = ref<string | null>(null)
+  const editorLoadSource = ref<'local' | 'remote' | 'share'>('local')
+  const readOnly = ref(false)
 
   // ── Computed ───────────────────────────────────────────────────────────────
   const selectedElement = computed(() =>
@@ -112,12 +112,14 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function moveElement(fromIndex: number, toIndex: number): void {
+    if (readOnly.value) return
     if (fromIndex === toIndex) return
     const [moved] = elements.value.splice(fromIndex, 1)
     elements.value.splice(toIndex, 0, moved)
   }
 
   function commitLayerReorderIfChanged(beforeOrder: string[]): void {
+    if (readOnly.value) return
     const afterOrder = elements.value.map(el => el.id)
     const changed = beforeOrder.length !== afterOrder.length
       || beforeOrder.some((id, i) => id !== afterOrder[i])
@@ -126,13 +128,28 @@ export const useEditorStore = defineStore('editor', () => {
     snapshot()
   }
 
-  function defaultTextIconColor(): string {
-    return textIconColorMode.value === 'light' ? '#ffffff' : '#000000'
+  function initialTextIconDefaultColor(): string {
+    const modern = localStorage.getItem(TEXT_ICON_DEFAULT_COLOR_KEY)?.trim()
+    if (isValidHexColor(modern)) return modern.toLowerCase()
+
+    const legacyMode = localStorage.getItem(LEGACY_TEXT_ICON_COLOR_MODE_KEY)
+    if (legacyMode === 'light') return '#ffffff'
+    return '#000000'
   }
 
-  function setTextIconColorMode(mode: TextIconColorMode): void {
-    textIconColorMode.value = mode
-    localStorage.setItem(TEXT_ICON_COLOR_MODE_KEY, mode)
+  function isValidHexColor(value: string | null | undefined): value is string {
+    return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)
+  }
+
+  function defaultTextIconColor(): string {
+    return textIconDefaultColor.value
+  }
+
+  function setTextIconDefaultColor(color: string): void {
+    const normalized = color.trim().toLowerCase()
+    if (!isValidHexColor(normalized)) return
+    textIconDefaultColor.value = normalized
+    localStorage.setItem(TEXT_ICON_DEFAULT_COLOR_KEY, normalized)
   }
 
   // ── History ────────────────────────────────────────────────────────────────
@@ -323,6 +340,9 @@ export const useEditorStore = defineStore('editor', () => {
     elements.value         = []
     selectedId.value       = null
     isDirty.value          = false
+    activeEditorId.value   = null
+    editorLoadSource.value = 'local'
+    readOnly.value = false
   }
 
   function selectImageType(imageTypeId: ImageTypeId): void {
@@ -332,6 +352,9 @@ export const useEditorStore = defineStore('editor', () => {
     elements.value         = []
     selectedId.value       = null
     isDirty.value          = false
+    activeEditorId.value   = null
+    editorLoadSource.value = 'local'
+    readOnly.value = false
   }
 
   function loadTemplate(template: Template): void {
@@ -358,6 +381,9 @@ export const useEditorStore = defineStore('editor', () => {
       null
     selectedId.value = focusId
     markTemplateSelection(template.id)
+    activeEditorId.value = null
+    editorLoadSource.value = 'local'
+    readOnly.value = false
   }
 
   function createCustomTemplate(width: number, height: number, name = 'Custom Canvas'): Template {
@@ -386,6 +412,9 @@ export const useEditorStore = defineStore('editor', () => {
     selectedId.value = null
     isDirty.value = false
     markTemplateSelection(template.id)
+    activeEditorId.value = null
+    editorLoadSource.value = 'local'
+    readOnly.value = false
     return template
   }
 
@@ -394,6 +423,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function updateElement(id: string, patch: Partial<TemplateElement>): void {
+    if (readOnly.value) return
     const idx = elements.value.findIndex(el => el.id === id)
     if (idx === -1) return
     const merged = { ...elements.value[idx], ...patch } as TemplateElement
@@ -401,12 +431,14 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function commitElementUpdate(id: string, patch: Partial<TemplateElement>): void {
+    if (readOnly.value) return
     updateElement(id, patch)
     isDirty.value = true
     snapshot()
   }
 
   function pushElementAndCommit(el: TemplateElement): void {
+    if (readOnly.value) return
     elements.value.push(el)
     selectedId.value = el.id
     isDirty.value    = true
@@ -498,7 +530,7 @@ export const useEditorStore = defineStore('editor', () => {
       y:            Math.round(size.height / 2 - 90),
       width:        320,
       height:       180,
-      fill:         solid('#3b82f6'),
+      fill:         solid(defaultTextIconColor()),
       fillEnabled:  true,
       stroke:       solid('#ffffff'),
       strokeWidth:  0,
@@ -520,7 +552,7 @@ export const useEditorStore = defineStore('editor', () => {
       y:            Math.round(size.height / 2 - diameter / 2),
       width:        diameter,
       height:       diameter,
-      fill:         solid('#22c55e'),
+      fill:         solid(defaultTextIconColor()),
       fillEnabled:  true,
       stroke:       solid('#ffffff'),
       strokeWidth:  0,
@@ -586,6 +618,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function resetToTemplateDefaults(): void {
+    if (readOnly.value) return
     if (!currentTemplate.value) return
     const template = currentTemplate.value
     elements.value = sanitizeElementsForEditor(
@@ -601,6 +634,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function duplicateElement(id: string): void {
+    if (readOnly.value) return
     const idx = elements.value.findIndex(el => el.id === id)
     if (idx === -1) return
     const clone = {
@@ -616,6 +650,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function reorderElement(id: string, toIndex: number): void {
+    if (readOnly.value) return
     const fromIndex = elements.value.findIndex(el => el.id === id)
     if (fromIndex === -1) return
 
@@ -651,6 +686,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function setElementOrder(orderIdsBottomToTop: string[]): void {
+    if (readOnly.value) return
     const beforeOrder = elements.value.map(el => el.id)
     const byId        = new Map(elements.value.map(el => [el.id, el] as const))
     const next: TemplateElement[] = []
@@ -675,6 +711,7 @@ export const useEditorStore = defineStore('editor', () => {
    * Unified image insertion — used by upload panel, paste, and drag-drop.
    */
   function addImageElement(src: string): void {
+    if (readOnly.value) return
     const size = canvasSize.value
     const img  = new window.Image()
     img.onload = () => {
@@ -706,6 +743,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function removeElement(id: string): void {
+    if (readOnly.value) return
     elements.value = elements.value.filter(el => el.id !== id)
     if (selectedId.value === id) selectedId.value = null
     isDirty.value = true
@@ -713,6 +751,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function undo(): void {
+    if (readOnly.value) return
     if (!canUndo.value) return
     historyIndex.value--
     elements.value   = JSON.parse(JSON.stringify(history.value[historyIndex.value])) as TemplateElement[]
@@ -720,6 +759,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function redo(): void {
+    if (readOnly.value) return
     if (!canRedo.value) return
     historyIndex.value++
     elements.value   = JSON.parse(JSON.stringify(history.value[historyIndex.value])) as TemplateElement[]
@@ -730,11 +770,73 @@ export const useEditorStore = defineStore('editor', () => {
     selectedId.value = null
   }
 
+  function loadSharedSnapshot(payload: ShareEditorPayload, options?: { permissionMode?: 'view' | 'edit' }): void {
+    const template = payload.template
+    currentTemplate.value = template
+    currentPlatform.value = PLATFORMS[template.platform]
+    currentImageType.value = IMAGE_TYPES[template.imageType]
+    elements.value = sanitizeElementsForEditor(
+      JSON.parse(JSON.stringify(payload.elements ?? template.elements)) as TemplateElement[],
+    )
+    selectedId.value = payload.selectedId ?? null
+    history.value = []
+    historyIndex.value = -1
+    snapshot()
+    isDirty.value = false
+    markTemplateSelection(template.id)
+    activeEditorId.value = null
+    editorLoadSource.value = 'share'
+    readOnly.value = options?.permissionMode === 'view'
+  }
+
+  function loadRemoteEditorSnapshot(editorId: string, payload: ShareEditorPayload): void {
+    const template = payload.template
+    currentTemplate.value = template
+    currentPlatform.value = PLATFORMS[template.platform]
+    currentImageType.value = IMAGE_TYPES[template.imageType]
+    elements.value = sanitizeElementsForEditor(
+      JSON.parse(JSON.stringify(payload.elements ?? template.elements)) as TemplateElement[],
+    )
+    selectedId.value = payload.selectedId ?? null
+    history.value = []
+    historyIndex.value = -1
+    snapshot()
+    isDirty.value = false
+    markTemplateSelection(template.id)
+    activeEditorId.value = editorId
+    editorLoadSource.value = 'remote'
+    readOnly.value = false
+  }
+
+  function setActiveEditorId(editorId: string | null): void {
+    activeEditorId.value = editorId
+  }
+
+  function setEditorLoadSource(source: 'local' | 'remote' | 'share'): void {
+    editorLoadSource.value = source
+  }
+
+  function setReadOnly(value: boolean): void {
+    readOnly.value = value
+  }
+
+  function setCurrentTemplateName(name: string): void {
+    if (!currentTemplate.value) return
+    const normalized = name.trim()
+    if (!normalized) return
+    if (currentTemplate.value.name === normalized) return
+    currentTemplate.value = {
+      ...currentTemplate.value,
+      name: normalized.slice(0, 255),
+    }
+    isDirty.value = true
+  }
+
   return {
     // state
     currentPlatform, currentImageType, currentTemplate,
     elements, selectedId, allTemplates,
-    isDirty, exportFormat, exportQuality, textIconColorMode,
+    isDirty, exportFormat, exportQuality, textIconDefaultColor, activeEditorId, editorLoadSource, readOnly,
     // computed
     selectedElement, templatesForPlatform, templatesForCurrentType,
     canUndo, canRedo, canvasSize,
@@ -743,9 +845,11 @@ export const useEditorStore = defineStore('editor', () => {
     loadTemplate, createCustomTemplate, selectElement, updateElement, commitElementUpdate,
     addTextElement, addTitleElement, addSubtitleElement, duplicateElement,
     addRectangleElement, addCircleElement, addIconElement, addSocialButtonPreset, resetToTemplateDefaults,
-    addImageElement, removeElement, setTextIconColorMode,
+    addImageElement, removeElement, setTextIconDefaultColor,
     reorderElement, setElementOrder, bringToFront, sendToBack, bringForward, sendBackward,
     undo, redo, clearSelection,
+    loadSharedSnapshot, loadRemoteEditorSnapshot, setActiveEditorId, setEditorLoadSource, setReadOnly,
+    setCurrentTemplateName,
     saveToLocalStorage, restoreFromLocalStorage, saveDraftForCurrentTemplate, restoreDraftForCurrentTemplate,
     restoreDraftByTemplateId, restoreSessionTemplateId, markTemplateSelection, clearSessionSelection, markClean,
   }

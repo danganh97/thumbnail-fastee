@@ -19,6 +19,16 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/EditorView.vue'),
   },
   {
+    path: '/editors/:editorId',
+    name: 'editor-by-id',
+    component: () => import('@/views/EditorView.vue'),
+  },
+  {
+    path: '/share/:code',
+    name: 'share',
+    component: () => import('@/views/ShareRedirectView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/',
   },
@@ -30,7 +40,9 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  if (from.name === 'editor' && to.name !== 'editor') {
+  const fromIsEditor = from.name === 'editor' || from.name === 'editor-by-id'
+  const toIsEditor = to.name === 'editor' || to.name === 'editor-by-id'
+  if (fromIsEditor && !toIsEditor) {
     const store = useEditorStore()
     if (store.isDirty) {
       const confirmed = window.confirm(

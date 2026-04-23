@@ -53,6 +53,50 @@
 
     <!-- Platform cards -->
     <div class="flex-1 px-8 pb-16 max-w-5xl mx-auto w-full">
+      <div
+        v-if="auth.currentUser.value"
+        class="mb-8 rounded-2xl border border-gray-200 dark:border-zinc-800 bg-white/85 dark:bg-zinc-900/70 backdrop-blur-sm p-4"
+      >
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-800 dark:text-zinc-100">Your Editors</h2>
+          <span class="text-xs text-gray-500 dark:text-zinc-400">{{ dbEditors.length }} item(s)</span>
+        </div>
+        <p v-if="isLoadingEditors" class="text-xs text-gray-500 dark:text-zinc-400">Loading editors…</p>
+        <p v-else-if="editorsError" class="text-xs text-red-500">{{ editorsError }}</p>
+        <p v-else-if="dbEditors.length === 0" class="text-xs text-gray-500 dark:text-zinc-400">
+          No editors yet. Create one to see it here.
+        </p>
+        <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div
+            v-for="editor in dbEditors"
+            :key="editor.editorId"
+            class="group rounded-xl border border-gray-200 dark:border-zinc-800 px-3 py-2 hover:border-brand-500/60 hover:bg-brand-500/5 transition-colors"
+          >
+            <div class="flex items-start gap-2">
+              <button
+                class="flex-1 min-w-0 text-left"
+                @click="openEditor(editor.editorId)"
+              >
+                <p class="text-sm font-medium text-gray-800 dark:text-zinc-100 truncate">{{ editor.name }}</p>
+                <p class="text-[11px] text-gray-500 dark:text-zinc-400">
+                  Updated {{ formatDate(editor.updatedAt) }}
+                </p>
+              </button>
+              <button
+                class="mt-0.5 rounded-md p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                title="Delete editor"
+                :disabled="deletingEditorId === editor.editorId"
+                @click.stop="removeEditor(editor.editorId)"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-3h4m-8 3h12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-5">
         <button
           v-for="platform in platforms"
@@ -179,11 +223,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useColorMode } from '@/composables/useColorMode'
+import { useAuth } from '@/composables/useAuth'
+import { deleteEditor, listEditors } from '@/services/editorApi'
 import { IMAGE_TYPES, PLATFORM_IMAGE_TYPES } from '@/types'
-import type { PlatformId } from '@/types'
+import type { EditorListItemResponse, PlatformId } from '@/types'
 import homeNatureBg from '@/assets/backgrounds/home-nature.svg'
 import youtubeBg from '@/assets/backgrounds/platform-youtube.svg'
 import tiktokBg from '@/assets/backgrounds/platform-tiktok.svg'
@@ -193,10 +239,15 @@ import templateSharedBg from '@/assets/backgrounds/template-shared.svg'
 
 const router = useRouter()
 const colorMode = useColorMode()
+const auth = useAuth()
 const showCustomSizeModal = ref(false)
 const selectedPreset = ref<PresetId>('square')
 const customWidth = ref(1080)
 const customHeight = ref(1080)
+const dbEditors = ref<EditorListItemResponse[]>([])
+const isLoadingEditors = ref(false)
+const deletingEditorId = ref<string | null>(null)
+const editorsError = ref('')
 
 type HomeCardId = PlatformId | 'custom'
 type PresetId = 'a4_portrait' | 'a4_landscape' | 'square'
@@ -229,6 +280,45 @@ function navigate(platformId: HomeCardId): void {
     return
   }
   router.push({ name: 'platform', params: { platformId } })
+}
+
+async function refreshEditors(): Promise<void> {
+  if (!auth.currentUser.value) {
+    dbEditors.value = []
+    return
+  }
+  isLoadingEditors.value = true
+  editorsError.value = ''
+  try {
+    dbEditors.value = await listEditors()
+  } catch {
+    editorsError.value = 'Failed to load editors.'
+  } finally {
+    isLoadingEditors.value = false
+  }
+}
+
+function openEditor(editorId: string): void {
+  router.push({ name: 'editor-by-id', params: { editorId } })
+}
+
+async function removeEditor(editorId: string): Promise<void> {
+  const confirmed = window.confirm('Delete this editor? This action cannot be undone.')
+  if (!confirmed || deletingEditorId.value) return
+  deletingEditorId.value = editorId
+  try {
+    await deleteEditor(editorId)
+    dbEditors.value = dbEditors.value.filter(editor => editor.editorId !== editorId)
+  } catch {
+    window.alert('Failed to delete editor.')
+  } finally {
+    deletingEditorId.value = null
+  }
+}
+
+function formatDate(value: string): string {
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
 const customSizeError = computed(() => {
@@ -268,4 +358,14 @@ function confirmCustomSize(): void {
     },
   })
 }
+
+watch(
+  () => auth.currentUser.value?.id ?? null,
+  () => {
+    refreshEditors().catch(() => {
+      editorsError.value = 'Failed to load editors.'
+    })
+  },
+  { immediate: true },
+)
 </script>

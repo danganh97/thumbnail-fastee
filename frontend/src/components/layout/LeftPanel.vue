@@ -141,15 +141,21 @@
                      text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
                      hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
               title="More Icons"
-              @click="showMoreIcons = !showMoreIcons"
+              @click="toggleMoreIcons($event)"
             >
               <i class="fa-solid fa-icons text-sm leading-none" />
             </button>
           </div>
           <div
             v-if="showMoreIcons"
-            class="absolute top-2 right-3 w-72 z-30 rounded-xl border border-gray-200 dark:border-zinc-700
+            data-more-icons-panel
+            class="fixed w-72 z-40 rounded-xl border border-gray-200 dark:border-zinc-700
                    bg-white dark:bg-zinc-900 shadow-xl p-3"
+            :style="{
+              left: `${moreIconsPopupPos.left}px`,
+              top: `${moreIconsPopupPos.top}px`,
+              transform: 'translateY(calc(-100% - 8px))',
+            }"
           >
             <div class="flex items-center justify-between mb-2">
               <p class="text-[10px] uppercase tracking-wider text-zinc-400">More Icons</p>
@@ -197,6 +203,7 @@ const store = useEditorStore()
 const LS_KEY = 'fastee-left-panel-collapsed'
 const collapsed = ref(localStorage.getItem(LS_KEY) === 'true')
 const showMoreIcons = ref(false)
+const moreIconsPopupPos = ref({ left: 0, top: 0 })
 const moreFontAwesomeIcons = [
   { label: 'Heart', icon: 'fa-heart', previewClass: 'fa-solid fa-heart' },
   { label: 'Star', icon: 'fa-star', previewClass: 'fa-solid fa-star' },
@@ -226,9 +233,33 @@ function toggleCollapsed() {
   localStorage.setItem(LS_KEY, String(collapsed.value))
 }
 
+function updateMoreIconsPopupPosition(triggerButton: HTMLElement): void {
+  const rect = triggerButton.getBoundingClientRect()
+  const popupWidth = 288
+  const left = Math.min(
+    Math.max(8, rect.right - popupWidth),
+    window.innerWidth - popupWidth - 8,
+  )
+  moreIconsPopupPos.value = {
+    left,
+    top: rect.top,
+  }
+}
+
+function toggleMoreIcons(event: MouseEvent): void {
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+  if (!showMoreIcons.value) {
+    updateMoreIconsPopupPosition(target)
+    showMoreIcons.value = true
+    return
+  }
+  showMoreIcons.value = false
+}
+
 function onClickOutsideMoreIcons(event: MouseEvent): void {
   const target = event.target as HTMLElement | null
-  if (target?.closest('[data-more-icons-popup]')) return
+  if (target?.closest('[data-more-icons-popup]') || target?.closest('[data-more-icons-panel]')) return
   showMoreIcons.value = false
 }
 

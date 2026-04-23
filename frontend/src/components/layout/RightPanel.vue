@@ -1,7 +1,7 @@
 <template>
-  <aside class="panel shrink-0 border-l border-gray-200 dark:border-zinc-800 border-r-0">
+  <aside class="panel relative shrink-0 border-l border-gray-200 dark:border-zinc-800 border-r-0">
 
-    <!-- Default color mode for newly added text/icons -->
+    <!-- Default color for newly added text/icons -->
     <div
       v-if="store.currentTemplate"
       class="px-3 pt-2 pb-1.5 shrink-0"
@@ -9,27 +9,55 @@
       <span class="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
         Text/Icon Defaults
       </span>
-      <div class="mt-1.5 inline-flex p-1 rounded-xl bg-zinc-900/60 border border-zinc-700">
-        <button
-          type="button"
-          class="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors"
-          :class="store.textIconColorMode === 'dark'
-            ? 'bg-brand-500 text-white shadow-sm'
-            : 'text-zinc-400 hover:text-zinc-200'"
-          @click="store.setTextIconColorMode('dark')"
-        >
-          Dark
-        </button>
-        <button
-          type="button"
-          class="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors"
-          :class="store.textIconColorMode === 'light'
-            ? 'bg-brand-500 text-white shadow-sm'
-            : 'text-zinc-400 hover:text-zinc-200'"
-          @click="store.setTextIconColorMode('light')"
-        >
-          Light
-        </button>
+      <div class="mt-1.5 flex items-center gap-2">
+        <input
+          type="color"
+          class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+          :value="store.textIconDefaultColor"
+          @change="store.setTextIconDefaultColor(($event.target as HTMLInputElement).value)"
+        />
+        <input
+          type="text"
+          class="input-field text-xs font-mono h-8"
+          :value="store.textIconDefaultColor"
+          maxlength="7"
+          @change="store.setTextIconDefaultColor(($event.target as HTMLInputElement).value)"
+        />
+      </div>
+    </div>
+
+    <div
+      v-if="store.currentTemplate"
+      class="px-3 pb-2 shrink-0"
+    >
+      <span class="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+        Collaboration
+      </span>
+      <label class="mt-1.5 inline-flex items-center gap-2 text-xs text-zinc-400">
+        <input
+          :checked="props.syncMode"
+          type="checkbox"
+          class="h-4 w-4 accent-brand-500"
+          @change="emit('update:sync-mode', ($event.target as HTMLInputElement).checked)"
+        />
+        Sync mode
+      </label>
+    </div>
+
+    <div
+      v-if="store.readOnly && store.currentTemplate"
+      class="absolute left-0 right-0 bottom-0 top-[108px] z-40 bg-zinc-900/60 backdrop-blur-[1px] flex items-start justify-center pt-10 pointer-events-auto"
+    >
+      <div class="mx-3 w-full rounded-xl border border-zinc-700 bg-zinc-900/90 p-4 text-center">
+        <div class="mx-auto w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-200">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c1.657 0 3 1.343 3 3v3H9v-3c0-1.657 1.343-3 3-3zm-5 3V9a5 5 0 0110 0v5" />
+          </svg>
+        </div>
+        <p class="mt-3 text-sm font-semibold text-zinc-100">View-only mode</p>
+        <p class="mt-1 text-xs text-zinc-400">
+          Editing is disabled for this shared editor. You can still use Collaboration controls.
+        </p>
       </div>
     </div>
 
@@ -286,6 +314,13 @@
                 @change="commit({ stroke: ($event.target as HTMLInputElement).value })"
               />
               <input
+                type="text"
+                class="input-field text-xs font-mono"
+                :value="textEl!.stroke || '#000000'"
+                maxlength="7"
+                @change="setTextStrokeColor(($event.target as HTMLInputElement).value)"
+              />
+              <input
                 type="number"
                 class="input-field text-xs"
                 min="0" max="20" step="1"
@@ -515,12 +550,21 @@
         <div class="px-3 pb-3 space-y-2">
           <div class="flex items-center gap-2">
             <label class="text-xs text-zinc-400 w-16 shrink-0">Color</label>
-            <input
-              type="color"
-              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
-              :value="paintColor(normalizePaint(iconEl!.fill), 0)"
-              @change="setIconColor(($event.target as HTMLInputElement).value)"
-            />
+            <div class="flex-1 flex items-center gap-2">
+              <input
+                type="color"
+                class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+                :value="paintColor(normalizePaint(iconEl!.fill), 0)"
+                @change="setIconColor(($event.target as HTMLInputElement).value)"
+              />
+              <input
+                type="text"
+                class="input-field text-xs font-mono"
+                :value="paintColor(normalizePaint(iconEl!.fill), 0)"
+                maxlength="7"
+                @change="setIconColor(($event.target as HTMLInputElement).value)"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -576,21 +620,39 @@
           </div>
           <div class="flex items-center gap-2">
             <label class="text-xs text-zinc-400 w-16 shrink-0">Fill A</label>
-            <input
-              type="color"
-              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
-              :value="paintColor(normalizePaint(rectEl!.fill), 0)"
-              @change="setRectFillColor(0, ($event.target as HTMLInputElement).value)"
-            />
+            <div class="flex-1 flex items-center gap-2">
+              <input
+                type="color"
+                class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+                :value="paintColor(normalizePaint(rectEl!.fill), 0)"
+                @change="setRectFillColor(0, ($event.target as HTMLInputElement).value)"
+              />
+              <input
+                type="text"
+                class="input-field text-xs font-mono"
+                :value="paintColor(normalizePaint(rectEl!.fill), 0)"
+                maxlength="7"
+                @change="setRectFillColor(0, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
           </div>
           <div v-if="normalizePaint(rectEl!.fill).kind !== 'solid'" class="flex items-center gap-2">
             <label class="text-xs text-zinc-400 w-16 shrink-0">Fill B</label>
-            <input
-              type="color"
-              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
-              :value="paintColor(normalizePaint(rectEl!.fill), 1)"
-              @change="setRectFillColor(1, ($event.target as HTMLInputElement).value)"
-            />
+            <div class="flex-1 flex items-center gap-2">
+              <input
+                type="color"
+                class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+                :value="paintColor(normalizePaint(rectEl!.fill), 1)"
+                @change="setRectFillColor(1, ($event.target as HTMLInputElement).value)"
+              />
+              <input
+                type="text"
+                class="input-field text-xs font-mono"
+                :value="paintColor(normalizePaint(rectEl!.fill), 1)"
+                maxlength="7"
+                @change="setRectFillColor(1, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <label class="text-xs text-zinc-400 w-16 shrink-0">Stroke W</label>
@@ -618,21 +680,39 @@
           </div>
           <div class="flex items-center gap-2">
             <label class="text-xs text-zinc-400 w-16 shrink-0">Stroke A</label>
-            <input
-              type="color"
-              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
-              :value="paintColor(normalizePaint(rectEl!.stroke), 0)"
-              @change="setRectStrokeColor(0, ($event.target as HTMLInputElement).value)"
-            />
+            <div class="flex-1 flex items-center gap-2">
+              <input
+                type="color"
+                class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+                :value="paintColor(normalizePaint(rectEl!.stroke), 0)"
+                @change="setRectStrokeColor(0, ($event.target as HTMLInputElement).value)"
+              />
+              <input
+                type="text"
+                class="input-field text-xs font-mono"
+                :value="paintColor(normalizePaint(rectEl!.stroke), 0)"
+                maxlength="7"
+                @change="setRectStrokeColor(0, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
           </div>
           <div v-if="normalizePaint(rectEl!.stroke).kind !== 'solid'" class="flex items-center gap-2">
             <label class="text-xs text-zinc-400 w-16 shrink-0">Stroke B</label>
-            <input
-              type="color"
-              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
-              :value="paintColor(normalizePaint(rectEl!.stroke), 1)"
-              @change="setRectStrokeColor(1, ($event.target as HTMLInputElement).value)"
-            />
+            <div class="flex-1 flex items-center gap-2">
+              <input
+                type="color"
+                class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+                :value="paintColor(normalizePaint(rectEl!.stroke), 1)"
+                @change="setRectStrokeColor(1, ($event.target as HTMLInputElement).value)"
+              />
+              <input
+                type="text"
+                class="input-field text-xs font-mono"
+                :value="paintColor(normalizePaint(rectEl!.stroke), 1)"
+                maxlength="7"
+                @change="setRectStrokeColor(1, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
           </div>
           <div v-if="!simpleMode" class="flex items-center gap-2">
             <label class="text-xs text-zinc-400 w-16 shrink-0">Opacity</label>
@@ -668,6 +748,14 @@ import type { TextElement, RectElement, ImageElement, IconElement, TemplateEleme
 import { FONT_SIZES } from '@/types'
 
 const store = useEditorStore()
+const props = withDefaults(defineProps<{
+  syncMode?: boolean
+}>(), {
+  syncMode: false,
+})
+const emit = defineEmits<{
+  (e: 'update:sync-mode', value: boolean): void
+}>()
 
 // ── Simple / Advanced mode ─────────────────────────────────────────────────
 const simpleMode = ref<boolean>(localStorage.getItem('right-panel-simple') !== 'false')
@@ -790,13 +878,22 @@ function patchPaintColor(paint: PaintStyle, index: number, color: string): Paint
   return { ...paint, colorStops: nextStops }
 }
 
+function normalizeHexColorInput(input: string): string | null {
+  const trimmed = input.trim()
+  if (/^#[\da-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase()
+  if (/^[\da-fA-F]{6}$/.test(trimmed)) return `#${trimmed.toLowerCase()}`
+  return null
+}
+
 function setRectFillType(kind: 'solid' | 'linear'): void {
   if (!rectEl.value) return
   commit({ fill: paintWithType(normalizePaint(rectEl.value.fill), kind) })
 }
 function setRectFillColor(index: number, color: string): void {
   if (!rectEl.value) return
-  commit({ fill: patchPaintColor(normalizePaint(rectEl.value.fill), index, color) })
+  const normalized = normalizeHexColorInput(color)
+  if (!normalized) return
+  commit({ fill: patchPaintColor(normalizePaint(rectEl.value.fill), index, normalized) })
 }
 function setRectStrokeType(kind: 'solid' | 'linear'): void {
   if (!rectEl.value) return
@@ -804,11 +901,21 @@ function setRectStrokeType(kind: 'solid' | 'linear'): void {
 }
 function setRectStrokeColor(index: number, color: string): void {
   if (!rectEl.value) return
-  commit({ stroke: patchPaintColor(normalizePaint(rectEl.value.stroke), index, color) })
+  const normalized = normalizeHexColorInput(color)
+  if (!normalized) return
+  commit({ stroke: patchPaintColor(normalizePaint(rectEl.value.stroke), index, normalized) })
 }
 function setIconColor(color: string): void {
   if (!iconEl.value) return
-  commit({ fill: { kind: 'solid', color }, strokeWidth: 0, stroke: { kind: 'solid', color: '#000000' } })
+  const normalized = normalizeHexColorInput(color)
+  if (!normalized) return
+  commit({ fill: { kind: 'solid', color: normalized }, strokeWidth: 0, stroke: { kind: 'solid', color: '#000000' } })
+}
+
+function setTextStrokeColor(color: string): void {
+  const normalized = normalizeHexColorInput(color)
+  if (!normalized) return
+  commit({ stroke: normalized })
 }
 
 function getLayerLabel(el: TemplateElement): string {

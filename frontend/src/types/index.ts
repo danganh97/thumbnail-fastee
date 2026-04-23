@@ -141,6 +141,91 @@ export interface Template {
   elements: TemplateElement[]
 }
 
+export interface ShareEditorPayload {
+  template: Template
+  elements: TemplateElement[]
+  selectedId?: string | null
+}
+
+export interface CreateShareResponse {
+  snapshotId: string
+  editorId: string
+  code: string
+  shareUrl: string
+  qrPayload: string
+  expiresAt: string | null
+  accessMode: 'anyone' | 'specific_users'
+  permissionMode: 'view' | 'edit'
+  allowedEmails: string[]
+}
+
+export interface ResolveShareResponse {
+  snapshotId: string
+  editorId: string
+  name: string
+  payload: ShareEditorPayload
+  createdAt: string
+  accessMode: 'anyone' | 'specific_users'
+  permissionMode: 'view' | 'edit'
+  allowedEmails: string[]
+}
+
+export interface ShareEditorConfigResponse {
+  snapshotId: string
+  editorId: string
+  code: string
+  shareUrl: string
+  expiresAt: string | null
+  accessMode: 'anyone' | 'specific_users'
+  permissionMode: 'view' | 'edit'
+  allowedEmails: string[]
+}
+
+export interface EditorRecordResponse {
+  editorId: string
+  name: string
+  payload: ShareEditorPayload
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EditorListItemResponse {
+  editorId: string
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EditorStatusResponse {
+  editorId: string
+  updatedAt: string
+  viewerCount: number
+  permissionMode?: 'view' | 'edit'
+}
+
+export interface PresenceUser {
+  sessionId: string
+  displayName: string
+  isAuthenticated: boolean
+  userId: string | null
+  lastSeenAt: string
+}
+
+export interface PresenceResponse {
+  users: PresenceUser[]
+}
+
+export interface CreateEditorRequest {
+  name?: string
+  payload: ShareEditorPayload
+}
+
+export interface AuthUser {
+  id: string
+  email: string
+  name: string | null
+}
+
 export interface EditorState {
   currentPlatform: Platform | null
   currentImageType: ImageType | null

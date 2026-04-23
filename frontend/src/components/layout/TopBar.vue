@@ -108,9 +108,27 @@
       </div>
 
       <div v-if="store.currentTemplate" class="flex items-center gap-2">
-        <span class="text-sm text-gray-600 dark:text-zinc-400 font-medium truncate max-w-[180px]">
-          {{ store.currentTemplate.name }}
-        </span>
+        <template v-if="isRenaming">
+          <input
+            ref="renameInputRef"
+            v-model="renameValue"
+            class="input-field h-7 text-xs max-w-[220px]"
+            maxlength="255"
+            @keydown.enter.prevent="commitRename"
+            @keydown.esc.prevent="cancelRename"
+            @blur="commitRename"
+          />
+        </template>
+        <template v-else>
+          <button
+            class="text-sm text-gray-600 dark:text-zinc-400 font-medium truncate max-w-[180px] hover:text-brand-500 transition-colors"
+            :disabled="store.readOnly"
+            title="Rename editor"
+            @click="startRename"
+          >
+            {{ store.currentTemplate.name }}
+          </button>
+        </template>
         <span class="text-gray-400 dark:text-zinc-600 text-xs">
           {{ store.canvasSize.width }}×{{ store.canvasSize.height }}
         </span>
@@ -130,6 +148,12 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
           </svg>
           Saved
+        </span>
+        <span
+          v-if="store.readOnly"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
+        >
+          View only
         </span>
       </div>
     </div>
@@ -155,15 +179,28 @@
           >
             No recent edits yet.
           </div>
-          <button
+          <div
             v-for="item in props.recentItems"
-            :key="`${item.platformId}-${item.imageTypeId}-${item.templateId}`"
-            class="w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-            @click="onOpenRecent(item)"
+            :key="item.editorId"
+            class="group flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
           >
-            <p class="text-sm font-medium text-gray-800 dark:text-zinc-200 truncate">{{ item.title }}</p>
-            <p class="text-xs text-gray-500 dark:text-zinc-400 truncate">{{ item.subtitle }}</p>
-          </button>
+            <button
+              class="flex-1 min-w-0 text-left"
+              @click="onOpenRecent(item)"
+            >
+              <p class="text-sm font-medium text-gray-800 dark:text-zinc-200 truncate">{{ item.title }}</p>
+              <p class="text-xs text-gray-500 dark:text-zinc-400 truncate">{{ item.subtitle }}</p>
+            </button>
+            <button
+              class="shrink-0 rounded-md p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors opacity-0 group-hover:opacity-100"
+              title="Delete editor"
+              @click.stop="onDeleteRecent(item.editorId)"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-3h4m-8 3h12" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -182,7 +219,45 @@
       <button
         v-if="store.currentTemplate"
         class="btn-ghost text-sm flex items-center gap-1.5"
+        title="Share via QR code"
+        :disabled="store.readOnly"
+        @click="emit('share')"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm12 2h2m2 0h-2m0 0v-2m0 2v2m-4 2h2" />
+        </svg>
+        <span class="hidden sm:inline">Share</span>
+      </button>
+
+      <span
+        v-if="auth.currentUser.value"
+        class="text-xs text-gray-500 dark:text-zinc-400 max-w-[180px] truncate"
+      >
+        {{ auth.currentUser.value.name || auth.currentUser.value.email }}
+      </span>
+      <button
+        v-if="auth.currentUser.value"
+        class="btn-ghost text-sm"
+        title="Logout"
+        @click="auth.logout()"
+      >
+        Logout
+      </button>
+      <button
+        v-else-if="auth.authReady.value"
+        class="btn-ghost text-sm text-amber-600 dark:text-amber-400 disabled:opacity-50"
+        :disabled="auth.isLoading.value"
+        @click="auth.promptGoogleLogin()"
+      >
+        Login with Google
+      </button>
+
+      <button
+        v-if="store.currentTemplate"
+        class="btn-ghost text-sm flex items-center gap-1.5"
         title="Reset editor to template defaults"
+        :disabled="store.readOnly"
         @click="store.resetToTemplateDefaults()"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -212,22 +287,72 @@
         </svg>
         Export
       </button>
+
+      <div
+        v-if="props.activeUsers.length"
+        class="relative hidden md:flex items-center ml-1"
+        data-presence-menu
+      >
+        <button
+          type="button"
+          class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800"
+          @click="togglePresenceMenu"
+        >
+          <div class="flex -space-x-2">
+            <span
+              v-for="user in props.activeUsers.slice(0, 4)"
+              :key="user.sessionId"
+              class="w-7 h-7 rounded-full border border-white dark:border-zinc-900 text-[10px] font-semibold flex items-center justify-center"
+              :class="avatarClass(user.sessionId)"
+              :title="user.displayName"
+            >
+              {{ initials(user.displayName) }}
+            </span>
+            <span
+              v-if="props.activeUsers.length > 4"
+              class="w-7 h-7 rounded-full border border-white dark:border-zinc-900 text-[10px] font-semibold flex items-center justify-center bg-zinc-700 text-zinc-100"
+            >
+              +{{ props.activeUsers.length - 4 }}
+            </span>
+          </div>
+        </button>
+        <div
+          v-if="showPresenceMenu"
+          class="absolute right-0 top-full mt-1.5 w-64 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl p-2 z-20"
+        >
+          <p class="px-2 pb-1 text-xs text-zinc-500">People on this editor</p>
+          <div class="max-h-56 overflow-y-auto space-y-1">
+            <div
+              v-for="user in props.activeUsers"
+              :key="user.sessionId"
+              class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800"
+            >
+              <span
+                class="w-7 h-7 rounded-full text-[10px] font-semibold flex items-center justify-center"
+                :class="avatarClass(user.sessionId)"
+              >
+                {{ initials(user.displayName) }}
+              </span>
+              <span class="text-xs text-gray-700 dark:text-zinc-200 truncate">{{ user.displayName }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 import { useEditorStore } from '@/store/editor'
 import { useColorMode }   from '@/composables/useColorMode'
-import type { ImageTypeId, PlatformId } from '@/types'
+import { useAuth } from '@/composables/useAuth'
+import type { PresenceUser } from '@/types'
 
 interface RecentItem {
-  platformId: PlatformId
-  imageTypeId: ImageTypeId
-  templateId: string
+  editorId: string
   title: string
   subtitle: string
 }
@@ -241,21 +366,30 @@ interface BreadcrumbItem {
 const router    = useRouter()
 const store     = useEditorStore()
 const colorMode = useColorMode()
+const auth      = useAuth()
 const emit      = defineEmits<{
   (e: 'export'): void
+  (e: 'share'): void
   (e: 'new-file'): void
   (e: 'save'): void
   (e: 'print'): void
   (e: 'open-recent', item: RecentItem): void
+  (e: 'delete-recent', editorId: string): void
 }>()
 const props = withDefaults(defineProps<{
   recentItems: RecentItem[]
   breadcrumbs?: BreadcrumbItem[]
+  activeUsers?: PresenceUser[]
 }>(), {
   breadcrumbs: () => [],
+  activeUsers: () => [],
 })
 const showFileMenu = ref(false)
 const showRecentMenu = ref(false)
+const showPresenceMenu = ref(false)
+const isRenaming = ref(false)
+const renameValue = ref('')
+const renameInputRef = ref<HTMLInputElement | null>(null)
 
 function goHome(): void {
   router.push({ name: 'home' })
@@ -263,12 +397,49 @@ function goHome(): void {
 
 function toggleFileMenu(): void {
   showFileMenu.value = !showFileMenu.value
-  if (showFileMenu.value) showRecentMenu.value = false
+  if (showFileMenu.value) {
+    showRecentMenu.value = false
+    showPresenceMenu.value = false
+  }
+}
+
+function startRename(): void {
+  if (!store.currentTemplate || store.readOnly) return
+  renameValue.value = store.currentTemplate.name
+  isRenaming.value = true
+  nextTick(() => {
+    renameInputRef.value?.focus()
+    renameInputRef.value?.select()
+  })
+}
+
+function commitRename(): void {
+  if (!isRenaming.value) return
+  const value = renameValue.value.trim()
+  if (value) {
+    store.setCurrentTemplateName(value)
+  }
+  isRenaming.value = false
+}
+
+function cancelRename(): void {
+  isRenaming.value = false
 }
 
 function toggleRecentMenu(): void {
   showRecentMenu.value = !showRecentMenu.value
-  if (showRecentMenu.value) showFileMenu.value = false
+  if (showRecentMenu.value) {
+    showFileMenu.value = false
+    showPresenceMenu.value = false
+  }
+}
+
+function togglePresenceMenu(): void {
+  showPresenceMenu.value = !showPresenceMenu.value
+  if (showPresenceMenu.value) {
+    showFileMenu.value = false
+    showRecentMenu.value = false
+  }
 }
 
 function onNewFile(): void {
@@ -291,18 +462,46 @@ function onOpenRecent(item: RecentItem): void {
   emit('open-recent', item)
 }
 
+function onDeleteRecent(editorId: string): void {
+  emit('delete-recent', editorId)
+}
+
 function onWindowClick(event: MouseEvent): void {
   const target = event.target as HTMLElement | null
-  if (target?.closest('[data-file-menu]') || target?.closest('[data-recent-menu]')) return
+  if (target?.closest('[data-file-menu]') || target?.closest('[data-recent-menu]') || target?.closest('[data-presence-menu]')) return
   showFileMenu.value = false
   showRecentMenu.value = false
+  showPresenceMenu.value = false
 }
 
 function onWindowKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
     showFileMenu.value = false
     showRecentMenu.value = false
+    showPresenceMenu.value = false
   }
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/g).filter(Boolean)
+  if (parts.length === 0) return '?'
+  const first = parts[0]?.[0] ?? ''
+  const second = parts[1]?.[0] ?? ''
+  return `${first}${second}`.toUpperCase()
+}
+
+function avatarClass(seed: string): string {
+  const palette = [
+    'bg-indigo-500 text-white',
+    'bg-emerald-500 text-white',
+    'bg-amber-500 text-black',
+    'bg-pink-500 text-white',
+    'bg-sky-500 text-white',
+    'bg-violet-500 text-white',
+  ]
+  let hash = 0
+  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+  return palette[hash % palette.length]
 }
 
 onMounted(() => {

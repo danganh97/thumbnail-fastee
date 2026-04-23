@@ -246,6 +246,7 @@ const { stage, layer, init, syncElements, syncBackground } = useCanvas(
   canvasW,
   canvasH,
   bgColor,
+  computed(() => store.readOnly),
   {
     onElementDragEnd(id, x, y) {
       store.commitElementUpdate(id, { x, y })
@@ -258,6 +259,7 @@ const { stage, layer, init, syncElements, syncBackground } = useCanvas(
       closeElementContextMenu()
     },
     onElementContextMenu(id, x, y) {
+      if (store.readOnly) return
       const contextElement = store.elements.find(el => el.id === id)
       const itemCount = contextElement?.type === 'image' ? 6 : 4
       const menuHeight = itemCount * 32 + 8
@@ -296,20 +298,22 @@ onUnmounted(() => {
 })
 
 watch(
-  () => store.currentTemplate?.id,
+  [() => store.currentTemplate?.id, () => containerRef.value],
   () => {
-    if (!store.currentTemplate) return
+    if (!store.currentTemplate || !containerRef.value) return
     editingId.value      = null
     zoomMultiplier.value = 1.0
     panOffset.value      = { x: 0, y: 0 }
     stage.value?.destroy()
     baseScale.value = computeAutoScale()
     setTimeout(() => {
+      if (!containerRef.value) return
       init()
       syncBackground()
       syncElements()
     }, 0)
   },
+  { immediate: true },
 )
 
 // ── Inline text editing ───────────────────────────────────────────────────
@@ -344,6 +348,7 @@ const textOverlayStyle = computed(() => {
 })
 
 function startTextEdit(id: string): void {
+  if (store.readOnly) return
   const el = store.elements.find(e => e.id === id)
   if (!el || el.type !== 'text') return
 
@@ -502,6 +507,7 @@ function onGlobalKeydown(e: KeyboardEvent): void {
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent): void {
+  if (store.readOnly) return
   // Don't handle shortcuts while editing inline text or panning
   if (editingId.value || isPanning.value) return
 
@@ -539,6 +545,7 @@ function onKeyDown(e: KeyboardEvent): void {
 
 // ── Paste image ───────────────────────────────────────────────────────────
 function onPaste(e: ClipboardEvent): void {
+  if (store.readOnly) return
   if (editingId.value) return // let the textarea handle paste
   const items   = Array.from(e.clipboardData?.items ?? [])
   const imgItem = items.find(item => item.type.startsWith('image/'))
@@ -589,6 +596,7 @@ function onDragLeave(): void {
 function onDragOver(e: DragEvent): void { e.preventDefault() }
 
 function onDrop(e: DragEvent): void {
+  if (store.readOnly) return
   e.preventDefault()
   isDraggingOver.value = false
   dragCounter.value    = 0

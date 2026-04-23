@@ -73,33 +73,32 @@ thumbnail-fastee/
 git clone https://github.com/danganh97/thumbnail-fastee.git
 cd thumbnail-fastee
 
-# Install backend deps
-cd backend && npm install && cd ..
-
-# Install frontend deps
-cd frontend && npm install && cd ..
+npm install
 ```
 
 ### 2. Configure environment
 
+Copy `.env.example` to root `.env` and edit it:
+
 ```bash
-cp .env.example frontend/.env
-# Edit frontend/.env if your backend runs on a different port
-# VITE_API_URL=http://localhost:3000
+cp .env.example .env
 ```
+
+All frontend and backend env vars are loaded from the root `.env`.
 
 ### 3. Run in development
 
-Open two terminals:
+Run both apps from repo root:
 
 ```bash
-# Terminal 1 — backend (port 3000)
-cd backend
 npm run dev
+```
 
-# Terminal 2 — frontend (port 5173)
-cd frontend
-npm run dev
+Or run one workspace at a time:
+
+```bash
+npm run dev:api
+npm run dev:web
 ```
 
 Then open [http://localhost:5173](http://localhost:5173).

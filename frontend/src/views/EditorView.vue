@@ -3,19 +3,48 @@
     <TopBar
       :recent-items="recentItems"
       :breadcrumbs="editorBreadcrumbs"
+      :active-users="activeUsers"
       @new-file="showNewFileModal = true"
       @save="showExportModal = true"
+      @share="openShareModal"
       @print="printCanvasOnly"
       @export="showExportModal = true"
       @open-recent="onOpenRecent"
+      @delete-recent="onDeleteRecent"
     />
+
+    <div
+      v-if="showStaleBanner"
+      class="flex items-center justify-between gap-3 px-4 py-2 text-xs border-b border-amber-300/60 bg-amber-100/80 text-amber-900 dark:bg-amber-900/25 dark:text-amber-200 dark:border-amber-700/60"
+    >
+      <span>New updates are available for this editor.</span>
+      <div class="flex items-center gap-3">
+        <label class="inline-flex items-center gap-1.5">
+          <input
+            v-model="syncMode"
+            type="checkbox"
+            class="accent-brand-500"
+          />
+          Sync mode
+        </label>
+        <button
+          class="px-2.5 py-1 rounded-md bg-amber-700 text-white dark:bg-amber-500 dark:text-black"
+          @click="refreshEditorFromRemote"
+        >
+          Refresh
+        </button>
+      </div>
+    </div>
 
     <div class="flex flex-1 min-h-0">
       <LeftPanel />
       <main class="flex-1 min-w-0 relative">
         <CanvasStage ref="canvasStageRef" />
       </main>
-      <RightPanel />
+      <RightPanel
+        :sync-mode="syncMode"
+        @update:sync-mode="syncMode = $event"
+      />
     </div>
 
     <!-- Export modal -->
@@ -30,6 +59,25 @@
       @close="showNewFileModal = false"
       @select-platform="onSelectPlatformFromNew"
       @create-custom="onCreateCustomFromNew"
+    />
+
+    <ShareModal
+      v-if="showShareModal"
+      :share-url="shareState?.shareUrl ?? ''"
+      :expires-at="shareState?.expiresAt ?? ''"
+      :access-mode="shareForm.accessMode"
+      :permission-mode="shareForm.permissionMode"
+      :allowed-emails="shareForm.allowedEmails"
+      :expires-in-seconds="shareForm.expiresInSeconds"
+      :has-existing-share="Boolean(shareState?.snapshotId)"
+      :is-creating="isCreatingShare"
+      :is-deleting="isDeletingShare"
+      :status-message="shareStatusMessage"
+      :error-message="shareErrorMessage"
+      @close="closeShareModal"
+      @delete-share="deleteCurrentShare"
+      @create-share="createShareFromModal"
+      @save-config-and-close="saveShareConfigAndClose"
     />
 
     <!-- Save toast -->
@@ -60,31 +108,117 @@ import RightPanel         from '@/components/layout/RightPanel.vue'
 import CanvasStage        from '@/components/canvas/CanvasStage.vue'
 import ExportModal        from '@/components/ui/ExportModal.vue'
 import NewFileModal       from '@/components/ui/NewFileModal.vue'
+import ShareModal         from '@/components/ui/ShareModal.vue'
 import { useEditorStore } from '@/store/editor'
 import { useExport }      from '@/composables/useExport'
 import { useAutoSave }    from '@/composables/useAutoSave'
+import { useAuth }        from '@/composables/useAuth'
 import { localTemplates } from '@/templates/index'
 import { PLATFORMS, IMAGE_TYPES, PLATFORM_IMAGE_TYPES } from '@/types'
-import type { PlatformId, ImageTypeId } from '@/types'
+import type { PlatformId, ImageTypeId, PresenceUser, ShareEditorPayload } from '@/types'
+import {
+  createShare,
+  deleteShare,
+  getShareByCode,
+  getShareByEditorId,
+  getSharePresenceByCode,
+  getShareStatusByCode,
+  heartbeatSharePresenceByCode,
+} from '@/services/shareApi'
+import {
+  createEditor,
+  deleteEditor,
+  getEditorById,
+  getEditorPresence,
+  getEditorStatus,
+  heartbeatEditorPresence,
+  listEditors,
+  updateEditor,
+} from '@/services/editorApi'
 import type Konva         from 'konva'
 
 const route           = useRoute()
 const router          = useRouter()
 const store           = useEditorStore()
+const auth            = useAuth()
 const { exportStage } = useExport()
 const canvasStageRef  = ref<InstanceType<typeof CanvasStage> | null>(null)
 const showExportModal = ref(false)
 const showNewFileModal = ref(false)
+const showShareModal = ref(false)
 const showSaveToast   = ref(false)
+const shareState = ref<{
+  snapshotId: string
+  shareUrl: string
+  expiresAt: string | null
+} | null>(null)
+const shareForm = ref<{
+  accessMode: 'anyone' | 'specific_users'
+  permissionMode: 'view' | 'edit'
+  allowedEmails: string[]
+  expiresInSeconds: number | null
+}>({
+  accessMode: 'anyone',
+  permissionMode: 'edit',
+  allowedEmails: [],
+  expiresInSeconds: 24 * 3600,
+})
+const isCreatingShare = ref(false)
+const isDeletingShare = ref(false)
+const shareErrorMessage = ref('')
+const shareStatusMessage = ref('')
 let   saveToastTimer  = 0
 let   isApplyingRoute = false
+let   isHydratingRoute = false
+let pollingTimer = 0
+const hasCollaborationFatalError = ref(false)
+const activeUsers = ref<PresenceUser[]>([])
+const latestRemoteUpdatedAt = ref<string | null>(null)
+const showStaleBanner = ref(false)
+const SYNC_MODE_STORAGE_KEY = 'fastee-sync-mode'
+const syncMode = ref(localStorage.getItem(SYNC_MODE_STORAGE_KEY) === '1')
+const ANON_SESSION_ID_KEY = 'fastee-anon-session-id'
+const ANON_NAME_KEY = 'fastee-anon-name'
 
-useAutoSave()
+function randomAnonymousName(): string {
+  const first = ['Blue', 'Solar', 'Crimson', 'Silent', 'Rapid', 'Ivory', 'Lunar', 'Amber']
+  const second = ['Panda', 'Fox', 'Eagle', 'Wolf', 'Otter', 'Falcon', 'Tiger', 'Koala']
+  return `${first[Math.floor(Math.random() * first.length)]} ${second[Math.floor(Math.random() * second.length)]}`
+}
+
+function getOrCreateAnonymousSessionId(): string {
+  const existing = localStorage.getItem(ANON_SESSION_ID_KEY)?.trim()
+  if (existing) return existing
+  const created = crypto.randomUUID()
+  localStorage.setItem(ANON_SESSION_ID_KEY, created)
+  return created
+}
+
+function getOrCreateAnonymousName(): string {
+  const existing = localStorage.getItem(ANON_NAME_KEY)?.trim()
+  if (existing) return existing
+  const created = randomAnonymousName()
+  localStorage.setItem(ANON_NAME_KEY, created)
+  return created
+}
+
+function setLatestRemoteUpdatedAt(updatedAt: string | null | undefined): void {
+  latestRemoteUpdatedAt.value = typeof updatedAt === 'string' && updatedAt.trim() ? updatedAt : null
+}
+
+useAutoSave({
+  onRemoteSaved(updatedAt) {
+    setLatestRemoteUpdatedAt(updatedAt)
+    showStaleBanner.value = false
+  },
+  getShareCode() {
+    const shareCode = typeof route.query.shareCode === 'string' ? route.query.shareCode.trim() : ''
+    return shareCode || null
+  },
+})
 
 interface RecentItem {
-  platformId: PlatformId
-  imageTypeId: ImageTypeId
-  templateId: string
+  editorId: string
   title: string
   subtitle: string
 }
@@ -145,6 +279,161 @@ function quickSaveExport(): void {
   })
 }
 
+function currentSharePayload(): ShareEditorPayload | null {
+  if (!store.currentTemplate) return null
+  return {
+    template: JSON.parse(JSON.stringify(store.currentTemplate)),
+    elements: JSON.parse(JSON.stringify(store.elements)),
+    selectedId: store.selectedId,
+  }
+}
+
+const currentViewerLabel = computed(() => {
+  if (auth.currentUser.value) {
+    return auth.currentUser.value.name || auth.currentUser.value.email
+  }
+  return getOrCreateAnonymousName()
+})
+
+async function openShareModal(): Promise<void> {
+  if (!store.currentTemplate) return
+  if (!auth.currentUser.value) {
+    showShareModal.value = true
+    shareErrorMessage.value = 'Sign in with Google first to create share links.'
+    shareStatusMessage.value = ''
+    return
+  }
+
+  shareErrorMessage.value = ''
+  shareStatusMessage.value = ''
+  showShareModal.value = true
+
+  const editorId = store.activeEditorId
+  if (!editorId) return
+  try {
+    const existing = await getShareByEditorId(editorId)
+    shareState.value = {
+      snapshotId: existing.snapshotId,
+      shareUrl: existing.shareUrl,
+      expiresAt: existing.expiresAt,
+    }
+    shareForm.value = {
+      accessMode: existing.accessMode,
+      permissionMode: existing.permissionMode,
+      allowedEmails: existing.allowedEmails,
+      expiresInSeconds: existing.expiresAt
+        ? Math.max(3600, Math.round((new Date(existing.expiresAt).getTime() - Date.now()) / 1000))
+        : null,
+    }
+  } catch {
+    // No existing share for this editor yet.
+  }
+}
+
+async function createShareFromModal(payloadConfig: {
+  accessMode: 'anyone' | 'specific_users'
+  permissionMode: 'view' | 'edit'
+  allowedEmails: string[]
+  expiresInSeconds: number | null
+}): Promise<boolean> {
+  const payload = currentSharePayload()
+  if (!payload || !auth.currentUser.value || isCreatingShare.value) return false
+  if (payloadConfig.accessMode === 'specific_users' && payloadConfig.allowedEmails.length === 0) {
+    shareErrorMessage.value = 'Enter at least one allowed email for Specific users mode.'
+    return false
+  }
+  shareForm.value = {
+    accessMode: payloadConfig.accessMode,
+    permissionMode: payloadConfig.permissionMode,
+    allowedEmails: payloadConfig.allowedEmails,
+    expiresInSeconds: payloadConfig.expiresInSeconds,
+  }
+  isCreatingShare.value = true
+  shareErrorMessage.value = ''
+  shareStatusMessage.value = ''
+  try {
+    let editorId = store.activeEditorId
+    if (!editorId) {
+      const created = await createEditor({
+        name: payload.template.name,
+        payload,
+      })
+      editorId = created.editorId
+      store.setActiveEditorId(editorId)
+      store.setEditorLoadSource('remote')
+    } else {
+      await updateEditor(editorId, {
+        name: payload.template.name,
+        payload,
+      })
+    }
+
+    const response = await createShare({
+      name: payload.template.name,
+      editorId,
+      accessMode: payloadConfig.accessMode,
+      permissionMode: payloadConfig.permissionMode,
+      allowedEmails: payloadConfig.allowedEmails,
+      expiresInSeconds: payloadConfig.expiresInSeconds,
+    })
+    shareState.value = {
+      snapshotId: response.snapshotId,
+      shareUrl: response.shareUrl,
+      expiresAt: response.expiresAt,
+    }
+    shareForm.value = {
+      accessMode: response.accessMode,
+      permissionMode: response.permissionMode,
+      allowedEmails: response.allowedEmails,
+      expiresInSeconds: payloadConfig.expiresInSeconds,
+    }
+    shareStatusMessage.value = 'Share settings saved.'
+    return true
+  } catch (error) {
+    shareErrorMessage.value = error instanceof Error ? error.message : 'Failed to create share link.'
+    return false
+  } finally {
+    isCreatingShare.value = false
+  }
+}
+
+async function saveShareConfigAndClose(payloadConfig: {
+  accessMode: 'anyone' | 'specific_users'
+  permissionMode: 'view' | 'edit'
+  allowedEmails: string[]
+  expiresInSeconds: number | null
+}): Promise<void> {
+  const success = await createShareFromModal(payloadConfig)
+  if (success) {
+    closeShareModal()
+  }
+}
+
+function closeShareModal(): void {
+  showShareModal.value = false
+  isCreatingShare.value = false
+  isDeletingShare.value = false
+  shareErrorMessage.value = ''
+  shareStatusMessage.value = ''
+}
+
+async function deleteCurrentShare(): Promise<void> {
+  const state = shareState.value
+  if (!state || isDeletingShare.value) return
+
+  isDeletingShare.value = true
+  shareErrorMessage.value = ''
+  shareStatusMessage.value = ''
+  try {
+    await deleteShare(state.snapshotId)
+    shareStatusMessage.value = 'Share deleted.'
+  } catch (error) {
+    shareErrorMessage.value = error instanceof Error ? error.message : 'Failed to delete share.'
+  } finally {
+    isDeletingShare.value = false
+  }
+}
+
 // ── Fetch templates ───────────────────────────────────────────────────────
 async function fetchTemplates(): Promise<void> {
   try {
@@ -175,6 +464,14 @@ function readRouteSelection(): { platform?: PlatformId; type?: ImageTypeId; temp
   }
 }
 
+function routeEditorId(): string | null {
+  return typeof route.params.editorId === 'string' ? route.params.editorId : null
+}
+
+function isShareSourceRoute(): boolean {
+  return route.query.source === 'share' && typeof route.query.shareCode === 'string'
+}
+
 function applyRouteSelection(): boolean {
   const { platform, type, template, customW, customH } = readRouteSelection()
   if (!platform || !type) return false
@@ -198,10 +495,19 @@ function applyRouteSelection(): boolean {
     store.createCustomTemplate(safeWidth, safeHeight)
     selectedTemplateId = store.currentTemplate?.id ?? null
   } else if (template) {
-    const tpl = store.templatesForCurrentType.find(t => t.id === template)
-    if (tpl) {
-      store.loadTemplate(tpl)
-      selectedTemplateId = tpl.id
+    if (
+      isShareSourceRoute()
+      && store.currentTemplate?.id === template
+      && store.currentPlatform?.id === platform
+      && store.currentImageType?.id === type
+    ) {
+      selectedTemplateId = template
+    } else {
+      const tpl = store.templatesForCurrentType.find(t => t.id === template)
+      if (tpl) {
+        store.loadTemplate(tpl)
+        selectedTemplateId = tpl.id
+      }
     }
   } else {
     const sessionTemplateId = store.restoreSessionTemplateId()
@@ -219,9 +525,11 @@ function applyRouteSelection(): boolean {
 }
 
 function syncRouteFromStore(): void {
-  if (route.name !== 'editor' || isApplyingRoute) return
+  const isEditorRoute = route.name === 'editor' || route.name === 'editor-by-id'
+  if (!isEditorRoute || isApplyingRoute || isHydratingRoute) return
 
   const query: Record<string, string> = {}
+  const currentShareCode = typeof route.query.shareCode === 'string' ? route.query.shareCode : undefined
   if (store.currentPlatform?.id) query.platform = store.currentPlatform.id
   if (store.currentImageType?.id) query.type = store.currentImageType.id
   if (store.currentTemplate?.id) {
@@ -233,19 +541,32 @@ function syncRouteFromStore(): void {
       query.template = store.currentTemplate.id
     }
   }
+  if (store.editorLoadSource === 'share' && currentShareCode) {
+    query.source = 'share'
+    query.shareCode = currentShareCode
+  }
 
   const currentPlatform = typeof route.query.platform === 'string' ? route.query.platform : undefined
   const currentType     = typeof route.query.type === 'string' ? route.query.type : undefined
   const currentTemplate = typeof route.query.template === 'string' ? route.query.template : undefined
   const currentCustomW  = typeof route.query.customW === 'string' ? route.query.customW : undefined
   const currentCustomH  = typeof route.query.customH === 'string' ? route.query.customH : undefined
+  const currentSource   = typeof route.query.source === 'string' ? route.query.source : undefined
+  const currentShareCodeQuery = typeof route.query.shareCode === 'string' ? route.query.shareCode : undefined
   if (
     currentPlatform === query.platform
     && currentType === query.type
     && currentTemplate === query.template
     && currentCustomW === query.customW
     && currentCustomH === query.customH
+    && currentSource === query.source
+    && currentShareCodeQuery === query.shareCode
   ) return
+
+  if (route.name === 'editor-by-id' && routeEditorId()) {
+    router.replace({ name: 'editor-by-id', params: { editorId: routeEditorId()! }, query })
+    return
+  }
 
   router.replace({ name: 'editor', query })
 }
@@ -268,82 +589,235 @@ function onCreateCustomFromNew(payload: { width: number; height: number }): void
   syncRouteFromStore()
 }
 
-function parseSessionKey(key: string): { platformId: PlatformId; imageTypeId: ImageTypeId } | null {
-  const match = key.match(/^fastee-session-([^-]+)-(.+)$/)
-  if (!match) return null
-  const platformId = match[1] as PlatformId
-  const imageTypeId = match[2] as ImageTypeId
-  if (!PLATFORMS[platformId] || !IMAGE_TYPES[imageTypeId]) return null
-  return { platformId, imageTypeId }
-}
-
-function displayTemplateName(templateId: string): string {
-  const template = store.allTemplates.find(t => t.id === templateId)
-  if (template) return template.name
-  if (templateId.startsWith('custom_')) {
-    const sizePart = templateId.replace('custom_', '')
-    return `Custom (${sizePart})`
+async function refreshRecentItems(): Promise<void> {
+  if (!auth.currentUser.value) {
+    recentItems.value = []
+    return
   }
-  return templateId
-}
-
-function refreshRecentItems(): void {
-  const items: RecentItem[] = []
-  const seen = new Set<string>()
-
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const key = localStorage.key(i)
-    if (!key || !key.startsWith('fastee-session-')) continue
-    const parsed = parseSessionKey(key)
-    if (!parsed) continue
-
-    const raw = localStorage.getItem(key)
-    if (!raw) continue
-
-    try {
-      const data = JSON.parse(raw) as { templateId?: string | null }
-      if (!data.templateId) continue
-      if (!localStorage.getItem(`fastee-draft-${data.templateId}`)) continue
-
-      const unique = `${parsed.platformId}-${parsed.imageTypeId}-${data.templateId}`
-      if (seen.has(unique)) continue
-      seen.add(unique)
-
-      const platformLabel = PLATFORMS[parsed.platformId].label
-      const typeLabel = IMAGE_TYPES[parsed.imageTypeId].label
-
-      items.push({
-        platformId: parsed.platformId,
-        imageTypeId: parsed.imageTypeId,
-        templateId: data.templateId,
-        title: displayTemplateName(data.templateId),
-        subtitle: `${platformLabel} • ${typeLabel}`,
-      })
-    } catch {
-      continue
-    }
+  try {
+    const editors = await listEditors()
+    recentItems.value = editors.slice(0, 10).map(editor => ({
+      editorId: editor.editorId,
+      title: editor.name,
+      subtitle: `Updated ${new Date(editor.updatedAt).toLocaleString()}`,
+    }))
+  } catch {
+    recentItems.value = []
   }
-
-  recentItems.value = items.slice(0, 10)
 }
 
 function onOpenRecent(item: RecentItem): void {
   if (!confirmDiscardChanges()) return
+  router.push({ name: 'editor-by-id', params: { editorId: item.editorId } })
+}
 
-  showNewFileModal.value = false
-  showExportModal.value = false
+async function onDeleteRecent(editorId: string): Promise<void> {
+  const confirmed = window.confirm('Delete this editor? This action cannot be undone.')
+  if (!confirmed) return
+  try {
+    await deleteEditor(editorId)
+    await refreshRecentItems()
+    if (store.activeEditorId === editorId) {
+      await router.replace({ name: 'home' })
+    }
+  } catch {
+    window.alert('Failed to delete editor.')
+  }
+}
 
-  store.selectPlatform(item.platformId)
-  store.selectImageType(item.imageTypeId)
+async function ensureRemoteEditorRouteForAuthenticatedUser(): Promise<void> {
+  if (!auth.currentUser.value) return
+  if (route.name === 'editor-by-id') return
+  if (isShareSourceRoute()) return
+  if (!store.currentTemplate) return
 
-  const restored = store.restoreDraftByTemplateId(item.templateId)
-  if (!restored) {
-    const fallback = store.templatesForCurrentType.find(t => t.id === item.templateId)
-      ?? store.templatesForCurrentType[0]
-    if (fallback) store.loadTemplate(fallback)
+  const payload = currentSharePayload()
+  if (!payload) return
+
+  try {
+    const created = await createEditor({
+      name: payload.template.name,
+      payload,
+    })
+    store.setActiveEditorId(created.editorId)
+    store.setEditorLoadSource('remote')
+    await router.replace({
+      name: 'editor-by-id',
+      params: { editorId: created.editorId },
+      query: {
+        platform: payload.template.platform,
+        type: payload.template.imageType,
+        template: payload.template.id,
+      },
+    })
+  } catch {
+    // Fall back to local draft flow if remote editor creation fails.
+  }
+}
+
+async function hydrateShareSourceIfNeeded(): Promise<boolean> {
+  const shareCode = typeof route.query.shareCode === 'string' ? route.query.shareCode.trim() : ''
+  if (!isShareSourceRoute() || !shareCode) return false
+
+  try {
+    const resolved = await getShareByCode(shareCode)
+    store.loadSharedSnapshot(resolved.payload, { permissionMode: resolved.permissionMode })
+    store.setActiveEditorId(resolved.editorId)
+    store.setEditorLoadSource('share')
+    setLatestRemoteUpdatedAt(null)
+    showStaleBanner.value = false
+    return true
+  } catch {
+    await router.replace({ name: 'home' })
+    return true
+  }
+}
+
+async function hydrateRemoteEditorIfNeeded(): Promise<boolean> {
+  const editorId = routeEditorId()
+  if (!editorId) return false
+  if (!auth.currentUser.value) {
+    await router.replace({ name: 'editor', query: route.query })
+    return true
   }
 
-  syncRouteFromStore()
+  try {
+    const editor = await getEditorById(editorId)
+    store.loadRemoteEditorSnapshot(editor.editorId, editor.payload)
+    setLatestRemoteUpdatedAt(editor.updatedAt)
+    showStaleBanner.value = false
+    return true
+  } catch {
+    await router.replace({ name: 'editor', query: route.query })
+    return true
+  }
+}
+
+async function refreshEditorFromRemote(): Promise<void> {
+  const shareCode = typeof route.query.shareCode === 'string' ? route.query.shareCode.trim() : ''
+  if (isShareSourceRoute() && shareCode) {
+    const [resolved, status] = await Promise.all([
+      getShareByCode(shareCode),
+      getShareStatusByCode(shareCode),
+    ])
+    store.loadSharedSnapshot(resolved.payload, { permissionMode: resolved.permissionMode })
+    setLatestRemoteUpdatedAt(status.updatedAt)
+    showStaleBanner.value = false
+    return
+  }
+  const editorId = store.activeEditorId
+  if (!editorId || !auth.currentUser.value) return
+  const editor = await getEditorById(editorId)
+  store.loadRemoteEditorSnapshot(editor.editorId, editor.payload)
+  setLatestRemoteUpdatedAt(editor.updatedAt)
+  showStaleBanner.value = false
+}
+
+async function pollCollaborationState(): Promise<void> {
+  const shareCode = typeof route.query.shareCode === 'string' ? route.query.shareCode.trim() : ''
+  if (isShareSourceRoute() && shareCode) {
+    await heartbeatSharePresenceByCode(shareCode, {
+      sessionId: getOrCreateAnonymousSessionId(),
+      displayName: currentViewerLabel.value,
+    })
+    const [status, presence] = await Promise.all([
+      getShareStatusByCode(shareCode),
+      getSharePresenceByCode(shareCode),
+    ])
+    activeUsers.value = presence.users
+    const hasRemoteUpdate = !latestRemoteUpdatedAt.value || status.updatedAt > latestRemoteUpdatedAt.value
+    if (hasRemoteUpdate) {
+      if (syncMode.value) {
+        await refreshEditorFromRemote()
+        showStaleBanner.value = false
+      } else if (latestRemoteUpdatedAt.value) {
+        showStaleBanner.value = true
+      } else {
+        setLatestRemoteUpdatedAt(status.updatedAt)
+      }
+    }
+    return
+  }
+
+  const editorId = store.activeEditorId
+  if (!editorId || !auth.currentUser.value) {
+    activeUsers.value = []
+    showStaleBanner.value = false
+    return
+  }
+  await heartbeatEditorPresence(editorId, {
+    sessionId: getOrCreateAnonymousSessionId(),
+    displayName: currentViewerLabel.value,
+  })
+  const [status, presence] = await Promise.all([
+    getEditorStatus(editorId),
+    getEditorPresence(editorId),
+  ])
+  activeUsers.value = presence.users
+  const hasRemoteUpdate = !latestRemoteUpdatedAt.value || status.updatedAt > latestRemoteUpdatedAt.value
+  if (hasRemoteUpdate) {
+    if (syncMode.value) {
+      await refreshEditorFromRemote()
+      showStaleBanner.value = false
+    } else if (latestRemoteUpdatedAt.value) {
+      showStaleBanner.value = true
+    } else {
+      setLatestRemoteUpdatedAt(status.updatedAt)
+    }
+  }
+}
+
+async function handleCollaborationApiFailure(): Promise<void> {
+  if (hasCollaborationFatalError.value) return
+  hasCollaborationFatalError.value = true
+  window.alert('Unable to verify shared editor access (heartbeat/status/presence failed). You will be redirected to a non-viewable page.')
+  store.setReadOnly(true)
+  store.clearSelection()
+  await router.replace({ name: 'home' })
+}
+
+function stopPolling(): void {
+  clearInterval(pollingTimer)
+  pollingTimer = 0
+}
+
+function startPolling(): void {
+  stopPolling()
+  pollingTimer = window.setInterval(() => {
+    pollCollaborationState().catch(() => {
+      handleCollaborationApiFailure().catch(() => {
+        // Ignore redirect errors.
+      })
+    })
+  }, 7000)
+  pollCollaborationState().catch(() => {
+    handleCollaborationApiFailure().catch(() => {
+      // Ignore redirect errors.
+    })
+  })
+}
+
+async function hydrateFromRoute(): Promise<void> {
+  isHydratingRoute = true
+  try {
+    const handledShare = await hydrateShareSourceIfNeeded()
+    if (handledShare) return
+
+    const handledRemote = await hydrateRemoteEditorIfNeeded()
+    if (handledRemote) return
+
+    const applied = applyRouteSelection()
+    if (!applied) return
+
+    const restored = store.restoreFromLocalStorage()
+    if (!restored && !store.currentTemplate) {
+      const fallback = store.templatesForCurrentType[0]
+      if (fallback) store.loadTemplate(fallback)
+    }
+    await ensureRemoteEditorRouteForAuthenticatedUser()
+  } finally {
+    isHydratingRoute = false
+  }
 }
 
 // ── Export ────────────────────────────────────────────────────────────────
@@ -431,20 +905,11 @@ function onBeforeUnload(): void {
 onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload)
   window.addEventListener('keydown', onKeyDown)
-  fetchTemplates().then(() => {
-    const applied = applyRouteSelection()
-    if (applied) {
-      const isCustomRoute = readRouteSelection().template === 'custom'
-      if (!isCustomRoute) {
-        const restored = store.restoreFromLocalStorage()
-        if (!restored && !store.currentTemplate) {
-          const fallback = store.templatesForCurrentType[0]
-          if (fallback) store.loadTemplate(fallback)
-        }
-      }
-    }
+  fetchTemplates().then(async () => {
+    await hydrateFromRoute()
     syncRouteFromStore()
     refreshRecentItems()
+    startPolling()
   })
 })
 
@@ -453,6 +918,7 @@ onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
   window.removeEventListener('keydown', onKeyDown)
   clearTimeout(saveToastTimer)
+  stopPolling()
 })
 
 watch(
@@ -465,20 +931,43 @@ watch(
 
 watch(
   () => route.query,
-  () => {
-    if (isApplyingRoute) return
-    const applied = applyRouteSelection()
-    if (!applied) return
-    const isCustomRoute = readRouteSelection().template === 'custom'
-    if (!isCustomRoute) {
-      const restored = store.restoreFromLocalStorage()
-      if (!restored && !store.currentTemplate) {
-        const fallback = store.templatesForCurrentType[0]
-        if (fallback) store.loadTemplate(fallback)
-      }
-    }
+  async () => {
+    if (isApplyingRoute || isHydratingRoute) return
+    if (routeEditorId() && !isShareSourceRoute()) return
+    await hydrateFromRoute()
+    syncRouteFromStore()
+    startPolling()
   },
 )
+
+watch(
+  () => route.params.editorId,
+  async () => {
+    if (isApplyingRoute || isHydratingRoute) return
+    await hydrateFromRoute()
+    syncRouteFromStore()
+    startPolling()
+  },
+)
+
+watch(
+  () => auth.currentUser.value?.id ?? null,
+  async () => {
+    if (isHydratingRoute) return
+    await ensureRemoteEditorRouteForAuthenticatedUser()
+    startPolling()
+  },
+)
+
+watch(syncMode, value => {
+  localStorage.setItem(SYNC_MODE_STORAGE_KEY, value ? '1' : '0')
+  if (value) {
+    showStaleBanner.value = false
+    refreshEditorFromRemote().catch(() => {
+      // Ignore transient fetch failures when toggling sync mode.
+    })
+  }
+})
 </script>
 
 <style scoped>
