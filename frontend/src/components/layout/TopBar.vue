@@ -18,6 +18,68 @@
         </svg>
       </div>
       <span class="font-semibold text-gray-900 dark:text-zinc-100 tracking-tight text-[15px] hidden sm:block">Fastee</span>
+      <div class="relative ml-2" data-file-menu>
+        <button
+          class="btn-ghost text-sm px-2.5 py-1.5"
+          title="File menu"
+          @click="toggleFileMenu"
+        >
+          File
+        </button>
+        <div
+          v-if="showFileMenu"
+          class="absolute left-0 top-full mt-1.5 w-44 rounded-xl border border-gray-200 dark:border-zinc-700
+                 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden"
+        >
+          <button
+            class="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+            @click="onNewFile"
+          >
+            New...
+          </button>
+          <button
+            class="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+            @click="onSave"
+          >
+            Save...
+          </button>
+          <button
+            class="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+            @click="onPrint"
+          >
+            Print
+          </button>
+        </div>
+      </div>
+      <nav
+        v-if="props.breadcrumbs.length"
+        aria-label="Breadcrumb"
+        class="hidden md:block ml-2"
+      >
+        <ol class="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-400">
+          <li
+            v-for="(crumb, index) in props.breadcrumbs"
+            :key="`${crumb.label}-${index}`"
+            class="flex items-center gap-2 min-w-0"
+          >
+            <RouterLink
+              v-if="crumb.to && !crumb.current"
+              :to="crumb.to"
+              class="hover:text-brand-500 transition-colors truncate max-w-[140px]"
+            >
+              {{ crumb.label }}
+            </RouterLink>
+            <span
+              v-else
+              class="truncate max-w-[180px]"
+              :class="crumb.current ? 'text-gray-800 dark:text-zinc-200 font-medium' : ''"
+            >
+              {{ crumb.label }}
+            </span>
+            <span v-if="index < props.breadcrumbs.length - 1" class="text-gray-400 dark:text-zinc-600">/</span>
+          </li>
+        </ol>
+      </nav>
     </div>
 
     <!-- Centre: undo/redo + template info + dirty indicator -->
@@ -74,6 +136,37 @@
 
     <!-- Right actions -->
     <div class="flex items-center gap-1.5">
+      <div class="relative" data-recent-menu>
+        <button
+          class="btn-ghost text-sm px-2.5 py-1.5"
+          title="Recent edits"
+          @click="toggleRecentMenu"
+        >
+          Recent
+        </button>
+        <div
+          v-if="showRecentMenu"
+          class="absolute right-0 top-full mt-1.5 w-72 rounded-xl border border-gray-200 dark:border-zinc-700
+                 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden z-20"
+        >
+          <div
+            v-if="!props.recentItems.length"
+            class="px-3 py-2 text-xs text-gray-500 dark:text-zinc-400"
+          >
+            No recent edits yet.
+          </div>
+          <button
+            v-for="item in props.recentItems"
+            :key="`${item.platformId}-${item.imageTypeId}-${item.templateId}`"
+            class="w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+            @click="onOpenRecent(item)"
+          >
+            <p class="text-sm font-medium text-gray-800 dark:text-zinc-200 truncate">{{ item.title }}</p>
+            <p class="text-xs text-gray-500 dark:text-zinc-400 truncate">{{ item.subtitle }}</p>
+          </button>
+        </div>
+      </div>
+
       <!-- Color mode toggle -->
       <button class="btn-ghost p-2" @click="colorMode.toggle()">
         <svg v-if="colorMode.mode.value === 'dark'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,16 +179,21 @@
         </svg>
       </button>
 
-      <!-- Add text -->
       <button
         v-if="store.currentTemplate"
         class="btn-ghost text-sm flex items-center gap-1.5"
-        @click="store.addTextElement()"
+        title="Reset editor to template defaults"
+        @click="store.resetToTemplateDefaults()"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M16.023 9.348h4.992V4.356m0 0l-2.526 2.527a9 9 0 11-2.223-1.39"
+          />
         </svg>
-        <span class="hidden sm:inline">Add Text</span>
+        <span class="hidden sm:inline">Reset</span>
       </button>
 
       <!-- Export button -->
@@ -119,16 +217,101 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import type { RouteLocationRaw } from 'vue-router'
 import { useEditorStore } from '@/store/editor'
 import { useColorMode }   from '@/composables/useColorMode'
+import type { ImageTypeId, PlatformId } from '@/types'
+
+interface RecentItem {
+  platformId: PlatformId
+  imageTypeId: ImageTypeId
+  templateId: string
+  title: string
+  subtitle: string
+}
+
+interface BreadcrumbItem {
+  label: string
+  to?: RouteLocationRaw
+  current?: boolean
+}
 
 const router    = useRouter()
 const store     = useEditorStore()
 const colorMode = useColorMode()
-const emit      = defineEmits<{ (e: 'export'): void }>()
+const emit      = defineEmits<{
+  (e: 'export'): void
+  (e: 'new-file'): void
+  (e: 'save'): void
+  (e: 'print'): void
+  (e: 'open-recent', item: RecentItem): void
+}>()
+const props = withDefaults(defineProps<{
+  recentItems: RecentItem[]
+  breadcrumbs?: BreadcrumbItem[]
+}>(), {
+  breadcrumbs: () => [],
+})
+const showFileMenu = ref(false)
+const showRecentMenu = ref(false)
 
 function goHome(): void {
   router.push({ name: 'home' })
 }
+
+function toggleFileMenu(): void {
+  showFileMenu.value = !showFileMenu.value
+  if (showFileMenu.value) showRecentMenu.value = false
+}
+
+function toggleRecentMenu(): void {
+  showRecentMenu.value = !showRecentMenu.value
+  if (showRecentMenu.value) showFileMenu.value = false
+}
+
+function onNewFile(): void {
+  showFileMenu.value = false
+  emit('new-file')
+}
+
+function onSave(): void {
+  showFileMenu.value = false
+  emit('save')
+}
+
+function onPrint(): void {
+  showFileMenu.value = false
+  emit('print')
+}
+
+function onOpenRecent(item: RecentItem): void {
+  showRecentMenu.value = false
+  emit('open-recent', item)
+}
+
+function onWindowClick(event: MouseEvent): void {
+  const target = event.target as HTMLElement | null
+  if (target?.closest('[data-file-menu]') || target?.closest('[data-recent-menu]')) return
+  showFileMenu.value = false
+  showRecentMenu.value = false
+}
+
+function onWindowKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    showFileMenu.value = false
+    showRecentMenu.value = false
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('click', onWindowClick)
+  window.addEventListener('keydown', onWindowKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', onWindowClick)
+  window.removeEventListener('keydown', onWindowKeydown)
+})
 </script>

@@ -15,7 +15,7 @@
                 d="M15 10l4.553-2.069A1 1 0 0121 8.869v6.262a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
           </div>
-          <span class="text-lg font-semibold text-gray-900 dark:text-white tracking-tight">Thumbnail Fastee</span>
+          <span class="text-lg font-semibold text-gray-900 dark:text-white tracking-tight"><a href="/">Fastee</a></span>
         </div>
       </div>
       <button class="btn-ghost p-2" @click="colorMode.toggle()">
@@ -51,10 +51,16 @@
           @click="navigate(imgType.id)"
         >
           <!-- Aspect ratio preview -->
-          <div class="relative bg-gradient-to-br from-gray-100 to-gray-200 dark:from-zinc-800 dark:to-zinc-700 overflow-hidden"
+          <div class="relative overflow-hidden"
                :style="previewStyle(imgType)">
+            <div
+              class="absolute inset-0 bg-cover bg-center bg-no-repeat"
+              :style="{ backgroundImage: `url(${platformBackground})` }"
+              aria-hidden="true"
+            />
+            <div class="absolute inset-0 bg-gradient-to-b from-black/10 to-black/35 dark:from-zinc-900/20 dark:to-zinc-900/55" aria-hidden="true" />
             <div class="absolute inset-0 flex items-center justify-center">
-              <span class="text-3xl opacity-30">{{ platformIcon }}</span>
+              <span class="text-3xl text-white/85 drop-shadow-md">{{ platformIcon }}</span>
             </div>
             <!-- Dimensions badge -->
             <div class="absolute bottom-2 right-2 text-[10px] font-mono bg-black/40 text-white px-1.5 py-0.5 rounded-md">
@@ -76,14 +82,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useEditorStore } from '@/store/editor'
 import { useColorMode } from '@/composables/useColorMode'
 import { PLATFORMS, IMAGE_TYPES, PLATFORM_IMAGE_TYPES } from '@/types'
 import type { PlatformId, ImageTypeId, ImageType } from '@/types'
+import youtubeBg from '@/assets/backgrounds/platform-youtube.svg'
+import tiktokBg from '@/assets/backgrounds/platform-tiktok.svg'
+import facebookBg from '@/assets/backgrounds/platform-facebook.svg'
+import instagramBg from '@/assets/backgrounds/platform-instagram.svg'
 
 const router    = useRouter()
 const route     = useRoute()
-const store     = useEditorStore()
 const colorMode = useColorMode()
 
 const platformId = computed(() => route.params.platformId as PlatformId)
@@ -93,6 +101,15 @@ const platformLabel = computed(() => platform.value?.label ?? '')
 const platformIcon  = computed(() => {
   const icons: Record<PlatformId, string> = { youtube: '▶', tiktok: '♪', facebook: 'f', instagram: '◈' }
   return icons[platformId.value] ?? '◈'
+})
+const platformBackground = computed(() => {
+  const backgrounds: Record<PlatformId, string> = {
+    youtube: youtubeBg,
+    tiktok: tiktokBg,
+    facebook: facebookBg,
+    instagram: instagramBg,
+  }
+  return backgrounds[platformId.value] ?? youtubeBg
 })
 
 const imageTypes = computed<ImageType[]>(() => {
@@ -107,8 +124,12 @@ function previewStyle(imgType: ImageType): Record<string, string> {
 }
 
 function navigate(imageTypeId: ImageTypeId): void {
-  store.selectPlatform(platformId.value)
-  store.selectImageType(imageTypeId)
-  router.push({ name: 'editor' })
+  router.push({
+    name: 'editor',
+    query: {
+      platform: platformId.value,
+      type: imageTypeId,
+    },
+  })
 }
 </script>

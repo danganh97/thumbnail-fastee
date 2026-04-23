@@ -4,6 +4,8 @@ import VueKonva from 'vue-konva'
 import router from './router'
 import App from './App.vue'
 import './assets/main.css'
+import 'bootstrap-icons/font/bootstrap-icons.css'
+import '@fortawesome/fontawesome-free/css/all.min.css'
 
 const app = createApp(App)
 

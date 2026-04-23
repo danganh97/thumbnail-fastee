@@ -3,7 +3,22 @@ import { Request, Response } from 'express'
 export const getConfig = (_req: Request, res: Response): void => {
   res.json({
     version: '1.0.0',
-    fonts: ['Inter', 'Poppins', 'Bebas Neue', 'Arial', 'Georgia'],
+    fonts: [
+      'Inter',
+      'Poppins',
+      'Bebas Neue',
+      'Roboto',
+      'Montserrat',
+      'Oswald',
+      'Anton',
+      'Open Sans',
+      'Lato',
+      'Raleway',
+      'Nunito',
+      'Playfair Display',
+      'Arial',
+      'Georgia',
+    ],
     fontSizes: [24, 32, 40, 48, 56, 64, 72, 80, 96, 120],
     platforms: [
       { id: 'youtube',   label: 'YouTube',   icon: '▶', description: 'Video thumbnails & Shorts covers' },

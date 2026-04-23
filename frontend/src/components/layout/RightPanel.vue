@@ -1,6 +1,38 @@
 <template>
   <aside class="panel shrink-0 border-l border-gray-200 dark:border-zinc-800 border-r-0">
 
+    <!-- Default color mode for newly added text/icons -->
+    <div
+      v-if="store.currentTemplate"
+      class="px-3 pt-2 pb-1.5 shrink-0"
+    >
+      <span class="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
+        Text/Icon Defaults
+      </span>
+      <div class="mt-1.5 inline-flex p-1 rounded-xl bg-zinc-900/60 border border-zinc-700">
+        <button
+          type="button"
+          class="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors"
+          :class="store.textIconColorMode === 'dark'
+            ? 'bg-brand-500 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-zinc-200'"
+          @click="store.setTextIconColorMode('dark')"
+        >
+          Dark
+        </button>
+        <button
+          type="button"
+          class="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors"
+          :class="store.textIconColorMode === 'light'
+            ? 'bg-brand-500 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-zinc-200'"
+          @click="store.setTextIconColorMode('light')"
+        >
+          Light
+        </button>
+      </div>
+    </div>
+
     <!-- Panel header with simple/advanced toggle -->
     <div
       v-if="store.selectedElement"
@@ -9,15 +41,116 @@
       <span class="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-500">
         Properties
       </span>
+      <div class="inline-flex p-1 rounded-xl bg-zinc-900/60 border border-zinc-700">
+        <button
+          type="button"
+          class="px-2.5 py-0.5 rounded-lg text-[10px] font-semibold tracking-wide transition-colors"
+          :class="simpleMode
+            ? 'bg-brand-500 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-zinc-200'"
+          title="Show simple controls"
+          @click="simpleMode = true"
+        >
+          Simple
+        </button>
+        <button
+          type="button"
+          class="px-2.5 py-0.5 rounded-lg text-[10px] font-semibold tracking-wide transition-colors"
+          :class="!simpleMode
+            ? 'bg-brand-500 text-white shadow-sm'
+            : 'text-zinc-400 hover:text-zinc-200'"
+          title="Show advanced controls"
+          @click="simpleMode = false"
+        >
+          Advanced
+        </button>
+      </div>
+    </div>
+
+    <!-- Layers -->
+    <div class="px-3 pb-2 shrink-0">
+      <p class="section-label !px-0">Layers</p>
+      <div class="space-y-1 max-h-56 overflow-y-auto pr-1">
+        <button
+          v-for="(layer, index) in layersTopToBottom"
+          :key="layer.id"
+          type="button"
+          draggable="true"
+          class="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs border transition-colors"
+          :class="[
+            layer.id === store.selectedId
+              ? 'border-brand-500/60 bg-brand-500/10 text-brand-200'
+              : 'border-zinc-800 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-900/40',
+            dragOverLayerId === layer.id ? 'ring-1 ring-brand-400/70' : '',
+          ]"
+          @click="store.selectElement(layer.id)"
+          @dragstart="onLayerDragStart(layer.id)"
+          @dragenter.prevent="onLayerDragEnter(layer.id)"
+          @dragover.prevent
+          @drop.prevent="onLayerDrop(layer.id)"
+          @dragend="onLayerDragEnd"
+          @contextmenu.prevent="openLayerContextMenu($event, layer.id)"
+        >
+          <span class="truncate text-left">{{ index + 1 }}. {{ layer.label }}</span>
+          <span class="text-[10px] uppercase tracking-wide opacity-70">{{ layer.type }}</span>
+        </button>
+        <p v-if="layersTopToBottom.length === 0" class="text-xs text-zinc-500 px-1 py-1">
+          No layers
+        </p>
+      </div>
+    </div>
+
+    <div class="h-px bg-gray-100 dark:bg-zinc-800 mx-4" />
+
+    <div
+      v-if="contextMenu.visible"
+      class="fixed z-50 min-w-40 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl p-1"
+      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+      @click.stop
+    >
       <button
-        class="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium border transition-colors"
-        :class="simpleMode
-          ? 'border-brand-500/40 text-brand-500 bg-brand-500/10'
-          : 'border-zinc-700 text-zinc-500 hover:border-zinc-500'"
-        :title="simpleMode ? 'Show advanced options' : 'Hide advanced options'"
-        @click="simpleMode = !simpleMode"
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="onBringToFront"
       >
-        {{ simpleMode ? 'Simple' : 'Advanced' }}
+        Bring to front
+      </button>
+      <button
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="onSendToBack"
+      >
+        Send to back
+      </button>
+      <button
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="onRotate180"
+      >
+        Rotate 180deg
+      </button>
+      <button
+        v-if="contextMenuLayer?.type === 'image'"
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="onFlipHorizontal"
+      >
+        Flip horizontal
+      </button>
+      <button
+        v-if="contextMenuLayer?.type === 'image'"
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="onFlipVertical"
+      >
+        Flip vertical
+      </button>
+      <button
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-red-300 hover:bg-red-900/30"
+        @click="onDeleteLayer"
+      >
+        Delete
       </button>
     </div>
 
@@ -104,6 +237,13 @@
                 : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
               @click="toggleItalic"
             >I</button>
+            <button
+              class="flex-1 py-1.5 rounded-lg text-xs underline transition-colors"
+              :class="(textEl!.textDecoration ?? 'none') === 'underline'
+                ? 'bg-brand-500 text-white'
+                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+              @click="toggleUnderline"
+            >U</button>
           </div>
         </div>
       </div>
@@ -368,28 +508,134 @@
       </div>
     </template>
 
+    <!-- ── Icon element controls ─────────────────────────────────────────── -->
+    <template v-else-if="store.selectedElement.type === 'icon'">
+      <div>
+        <p class="section-label">Icon</p>
+        <div class="px-3 pb-3 space-y-2">
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Color</label>
+            <input
+              type="color"
+              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+              :value="paintColor(normalizePaint(iconEl!.fill), 0)"
+              @change="setIconColor(($event.target as HTMLInputElement).value)"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="px-3 pb-4 mt-auto">
+        <button
+          class="w-full py-2 rounded-xl text-sm text-red-400 border border-red-900/40 hover:bg-red-900/20 transition-colors"
+          @click="store.removeElement(store.selectedId!)"
+        >
+          Delete Icon
+        </button>
+      </div>
+    </template>
+
     <!-- ── Rect element controls ─────────────────────────────────────────── -->
     <template v-else-if="store.selectedElement.type === 'rect'">
       <div>
         <p class="section-label">Rectangle</p>
         <div class="px-3 pb-3 space-y-2">
           <div class="flex items-center gap-2">
-            <label class="text-xs text-zinc-400 w-10 shrink-0">Fill</label>
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Radius</label>
+            <input
+              type="range"
+              class="flex-1 accent-brand-500"
+              min="0"
+              :max="Math.round(Math.min(rectEl!.width, rectEl!.height) / 2)"
+              :value="rectEl!.cornerRadius"
+              @input="patch({ cornerRadius: Number(($event.target as HTMLInputElement).value) })"
+              @change="commit({ cornerRadius: Number(($event.target as HTMLInputElement).value) })"
+            />
+            <span class="text-xs text-zinc-400 w-10 text-right">{{ Math.round(rectEl!.cornerRadius) }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Inside</label>
+            <input
+              type="checkbox"
+              class="h-4 w-4 accent-brand-500"
+              :checked="rectEl!.fillEnabled ?? true"
+              @change="commit({ fillEnabled: ($event.target as HTMLInputElement).checked })"
+            />
+            <span class="text-xs text-zinc-400">{{ (rectEl!.fillEnabled ?? true) ? 'Filled' : 'Empty' }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Fill Type</label>
+            <select
+              class="input-field text-xs"
+              :value="normalizePaint(rectEl!.fill).kind"
+              @change="setRectFillType(($event.target as HTMLSelectElement).value as 'solid' | 'linear')"
+            >
+              <option value="solid">Solid</option>
+              <option value="linear">Linear</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Fill A</label>
             <input
               type="color"
               class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
-              :value="rectEl!.fill || '#ffffff'"
-              @change="commit({ fill: ($event.target as HTMLInputElement).value })"
+              :value="paintColor(normalizePaint(rectEl!.fill), 0)"
+              @change="setRectFillColor(0, ($event.target as HTMLInputElement).value)"
             />
+          </div>
+          <div v-if="normalizePaint(rectEl!.fill).kind !== 'solid'" class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Fill B</label>
             <input
-              type="text"
-              class="input-field text-xs font-mono"
-              :value="rectEl!.fill"
-              @change="commit({ fill: ($event.target as HTMLInputElement).value })"
+              type="color"
+              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+              :value="paintColor(normalizePaint(rectEl!.fill), 1)"
+              @change="setRectFillColor(1, ($event.target as HTMLInputElement).value)"
+            />
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Stroke W</label>
+            <input
+              type="range"
+              min="0"
+              max="40"
+              class="flex-1 accent-brand-500"
+              :value="rectEl!.strokeWidth ?? 0"
+              @input="patch({ strokeWidth: Number(($event.target as HTMLInputElement).value) })"
+              @change="commit({ strokeWidth: Number(($event.target as HTMLInputElement).value) })"
+            />
+            <span class="text-xs text-zinc-400 w-10 text-right">{{ Math.round(rectEl!.strokeWidth ?? 0) }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Stroke T</label>
+            <select
+              class="input-field text-xs"
+              :value="normalizePaint(rectEl!.stroke).kind"
+              @change="setRectStrokeType(($event.target as HTMLSelectElement).value as 'solid' | 'linear')"
+            >
+              <option value="solid">Solid</option>
+              <option value="linear">Linear</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Stroke A</label>
+            <input
+              type="color"
+              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+              :value="paintColor(normalizePaint(rectEl!.stroke), 0)"
+              @change="setRectStrokeColor(0, ($event.target as HTMLInputElement).value)"
+            />
+          </div>
+          <div v-if="normalizePaint(rectEl!.stroke).kind !== 'solid'" class="flex items-center gap-2">
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Stroke B</label>
+            <input
+              type="color"
+              class="w-8 h-8 rounded-lg cursor-pointer border border-zinc-700 bg-transparent p-0.5"
+              :value="paintColor(normalizePaint(rectEl!.stroke), 1)"
+              @change="setRectStrokeColor(1, ($event.target as HTMLInputElement).value)"
             />
           </div>
           <div v-if="!simpleMode" class="flex items-center gap-2">
-            <label class="text-xs text-zinc-400 w-10 shrink-0">Opacity</label>
+            <label class="text-xs text-zinc-400 w-16 shrink-0">Opacity</label>
             <input
               type="range"
               min="0" max="1" step="0.01"
@@ -415,10 +661,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useEditorStore }   from '@/store/editor'
 import FontPicker           from '@/components/ui/FontPicker.vue'
-import type { TextElement, RectElement, ImageElement, TemplateElement } from '@/types'
+import type { TextElement, RectElement, ImageElement, IconElement, TemplateElement, PaintStyle } from '@/types'
 import { FONT_SIZES } from '@/types'
 
 const store = useEditorStore()
@@ -443,6 +689,35 @@ const rectEl = computed(() =>
 const imgEl = computed(() =>
   store.selectedElement?.type === 'image'
     ? (store.selectedElement as ImageElement)
+    : null,
+)
+const iconEl = computed(() =>
+  store.selectedElement?.type === 'icon'
+    ? (store.selectedElement as IconElement)
+    : null,
+)
+
+const layersTopToBottom = computed(() =>
+  [...store.elements]
+    .map(el => ({
+      id: el.id,
+      type: el.type,
+      label: getLayerLabel(el),
+    }))
+    .reverse(),
+)
+
+const draggedLayerId  = ref<string | null>(null)
+const dragOverLayerId = ref<string | null>(null)
+const contextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  layerId: null as string | null,
+})
+const contextMenuLayer = computed(() =>
+  contextMenu.value.layerId
+    ? store.elements.find(el => el.id === contextMenu.value.layerId) ?? null
     : null,
 )
 
@@ -473,6 +748,12 @@ function toggleItalic(): void {
   commit({ fontStyle: next })
 }
 
+function toggleUnderline(): void {
+  if (!textEl.value) return
+  const next = (textEl.value.textDecoration ?? 'none') === 'underline' ? 'none' : 'underline'
+  commit({ textDecoration: next })
+}
+
 function toggleFlipX(): void {
   if (!imgEl.value) return
   commit({ flipX: !imgEl.value.flipX })
@@ -482,4 +763,163 @@ function toggleFlipY(): void {
   if (!imgEl.value) return
   commit({ flipY: !imgEl.value.flipY })
 }
+
+function normalizePaint(paint: string | PaintStyle | undefined): PaintStyle {
+  if (!paint) return { kind: 'solid', color: '#ffffff' }
+  if (typeof paint === 'string') return { kind: 'solid', color: paint }
+  return paint
+}
+
+function paintColor(paint: PaintStyle, index: number): string {
+  if (paint.kind === 'solid') return paint.color
+  return paint.colorStops[index]?.[1] ?? paint.colorStops[0]?.[1] ?? '#ffffff'
+}
+
+function paintWithType(base: PaintStyle, kind: 'solid' | 'linear'): PaintStyle {
+  const colorA = paintColor(base, 0)
+  const colorB = paintColor(base, 1)
+  if (kind === 'solid') return { kind: 'solid', color: colorA }
+  return { kind: 'linear', startX: 0, startY: 0, endX: 220, endY: 0, colorStops: [[0, colorA], [1, colorB]] }
+}
+
+function patchPaintColor(paint: PaintStyle, index: number, color: string): PaintStyle {
+  if (paint.kind === 'solid') return { ...paint, color }
+  const nextStops: [number, string][] = [...paint.colorStops]
+  if (!nextStops[index]) nextStops[index] = [index === 0 ? 0 : 1, color]
+  else nextStops[index] = [nextStops[index][0], color]
+  return { ...paint, colorStops: nextStops }
+}
+
+function setRectFillType(kind: 'solid' | 'linear'): void {
+  if (!rectEl.value) return
+  commit({ fill: paintWithType(normalizePaint(rectEl.value.fill), kind) })
+}
+function setRectFillColor(index: number, color: string): void {
+  if (!rectEl.value) return
+  commit({ fill: patchPaintColor(normalizePaint(rectEl.value.fill), index, color) })
+}
+function setRectStrokeType(kind: 'solid' | 'linear'): void {
+  if (!rectEl.value) return
+  commit({ stroke: paintWithType(normalizePaint(rectEl.value.stroke), kind) })
+}
+function setRectStrokeColor(index: number, color: string): void {
+  if (!rectEl.value) return
+  commit({ stroke: patchPaintColor(normalizePaint(rectEl.value.stroke), index, color) })
+}
+function setIconColor(color: string): void {
+  if (!iconEl.value) return
+  commit({ fill: { kind: 'solid', color }, strokeWidth: 0, stroke: { kind: 'solid', color: '#000000' } })
+}
+
+function getLayerLabel(el: TemplateElement): string {
+  if (el.type === 'text') {
+    const text = (el as TextElement).text?.trim() || 'Text'
+    return text.length > 24 ? `${text.slice(0, 24)}...` : text
+  }
+  if (el.type === 'image') {
+    return 'Image'
+  }
+  if (el.type === 'icon') {
+    return `Icon: ${(el as IconElement).icon}`
+  }
+  return 'Rectangle'
+}
+
+function onLayerDragStart(id: string): void {
+  draggedLayerId.value = id
+}
+
+function onLayerDragEnter(id: string): void {
+  if (!draggedLayerId.value || draggedLayerId.value === id) return
+  dragOverLayerId.value = id
+}
+
+function onLayerDrop(targetId: string): void {
+  if (!draggedLayerId.value || draggedLayerId.value === targetId) return
+  const idsTop = layersTopToBottom.value.map(l => l.id)
+  const from   = idsTop.indexOf(draggedLayerId.value)
+  const to     = idsTop.indexOf(targetId)
+  if (from === -1 || to === -1) return
+  const [moved] = idsTop.splice(from, 1)
+  idsTop.splice(to, 0, moved)
+  store.setElementOrder(idsTop.reverse())
+  onLayerDragEnd()
+}
+
+function onLayerDragEnd(): void {
+  draggedLayerId.value  = null
+  dragOverLayerId.value = null
+}
+
+function openLayerContextMenu(e: MouseEvent, layerId: string): void {
+  const layer = store.elements.find(el => el.id === layerId)
+  const itemCount = layer?.type === 'image' ? 6 : 4
+  const menuHeight = itemCount * 32 + 8
+  store.selectElement(layerId)
+  contextMenu.value = {
+    visible: true,
+    x: Math.min(e.clientX, window.innerWidth - 180),
+    y: Math.min(e.clientY, window.innerHeight - menuHeight),
+    layerId,
+  }
+}
+
+function closeLayerContextMenu(): void {
+  contextMenu.value.visible = false
+  contextMenu.value.layerId = null
+}
+
+function onBringToFront(): void {
+  if (!contextMenu.value.layerId) return
+  store.bringToFront(contextMenu.value.layerId)
+  closeLayerContextMenu()
+}
+
+function onSendToBack(): void {
+  if (!contextMenu.value.layerId) return
+  store.sendToBack(contextMenu.value.layerId)
+  closeLayerContextMenu()
+}
+
+function onRotate180(): void {
+  const layer = contextMenuLayer.value
+  if (!layer) return
+  const nextRotation = ((layer.rotation ?? 0) + 180) % 360
+  store.commitElementUpdate(layer.id, { rotation: nextRotation })
+  closeLayerContextMenu()
+}
+
+function onFlipHorizontal(): void {
+  const layer = contextMenuLayer.value
+  if (!layer || layer.type !== 'image') return
+  store.commitElementUpdate(layer.id, { flipX: !layer.flipX })
+  closeLayerContextMenu()
+}
+
+function onFlipVertical(): void {
+  const layer = contextMenuLayer.value
+  if (!layer || layer.type !== 'image') return
+  store.commitElementUpdate(layer.id, { flipY: !layer.flipY })
+  closeLayerContextMenu()
+}
+
+function onDeleteLayer(): void {
+  if (!contextMenu.value.layerId) return
+  store.removeElement(contextMenu.value.layerId)
+  closeLayerContextMenu()
+}
+
+function onWindowKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closeLayerContextMenu()
+}
+
+onMounted(() => {
+  window.addEventListener('click', closeLayerContextMenu)
+  window.addEventListener('keydown', onWindowKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeLayerContextMenu)
+  window.removeEventListener('keydown', onWindowKeydown)
+})
 </script>

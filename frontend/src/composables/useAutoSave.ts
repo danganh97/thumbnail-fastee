@@ -11,7 +11,7 @@ export function useAutoSave() {
   }, 1500)
 
   watch(
-    () => [store.elements, store.backgroundImage] as const,
+    () => [store.elements] as const,
     () => {
       if (store.isDirty) debouncedSave()
     },

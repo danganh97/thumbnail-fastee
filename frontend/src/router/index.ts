@@ -40,6 +40,7 @@ router.beforeEach((to, from, next) => {
         next(false)
         return
       }
+      store.saveToLocalStorage()
     }
   }
   next()

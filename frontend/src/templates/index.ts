@@ -1,4 +1,5 @@
 import type { Template } from '@/types'
+import sharedTemplateBg from '@/assets/backgrounds/template-shared.svg'
 
 // ── YouTube ───────────────────────────────────────────────────────────────────
 import youtubeViral            from './youtube/youtube_viral.json'
@@ -11,8 +12,12 @@ import youtubeShortChallenge   from './youtube/youtube_short_challenge.json'
 import tiktokHook              from './tiktok/tiktok_hook.json'
 import tiktokProduct           from './tiktok/tiktok_product.json'
 import tiktokQuote             from './tiktok/tiktok_quote.json'
+import tiktokStorytime         from './tiktok/tiktok_storytime.json'
+import tiktokDuetReaction      from './tiktok/tiktok_duet_reaction.json'
+import tiktokTrendingSteps     from './tiktok/tiktok_trending_steps.json'
 import tiktokLiveAnnounce      from './tiktok/tiktok_live_announce.json'
 import tiktokLiveMusic         from './tiktok/tiktok_live_music.json'
+import tiktokLiveQna           from './tiktok/tiktok_live_qna.json'
 
 // ── Facebook ──────────────────────────────────────────────────────────────────
 import facebookSale            from './facebook/facebook_sale.json'
@@ -35,15 +40,15 @@ import instagramReelProduct    from './instagram/instagram_reel_product.json'
 import instagramStorySale      from './instagram/instagram_story_sale.json'
 import instagramStoryEvent     from './instagram/instagram_story_event.json'
 
-export const localTemplates: Template[] = [
+const localTemplatesRaw: Template[] = [
   // YouTube Video
   youtubeViral, youtubeTutorial, youtubeMinimal,
   // YouTube Shorts
   youtubeShortHook, youtubeShortChallenge,
   // TikTok Video
-  tiktokHook, tiktokProduct, tiktokQuote,
+  tiktokHook, tiktokProduct, tiktokQuote, tiktokStorytime, tiktokDuetReaction, tiktokTrendingSteps,
   // TikTok Live
-  tiktokLiveAnnounce, tiktokLiveMusic,
+  tiktokLiveAnnounce, tiktokLiveMusic, tiktokLiveQna,
   // Facebook Post
   facebookSale, facebookEvent, facebookMinimal,
   // Facebook Cover
@@ -61,3 +66,9 @@ export const localTemplates: Template[] = [
   // Instagram Story
   instagramStorySale, instagramStoryEvent,
 ] as Template[]
+
+export const localTemplates: Template[] = localTemplatesRaw.map(template => ({
+  ...template,
+  // Keep one shared visual base across templates; variation comes from text setup/layout.
+  background: `url(${sharedTemplateBg})`,
+}))

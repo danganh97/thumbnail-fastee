@@ -70,36 +70,110 @@
         <div class="h-px bg-gray-100 dark:bg-zinc-800 mx-4" />
 
         <!-- Quick Add -->
-        <div>
+        <div class="relative" data-more-icons-popup>
           <p class="section-label">Quick Add</p>
-          <div class="px-3 pb-3 flex flex-col gap-1.5">
+          <div class="px-3 pb-3 grid grid-cols-4 gap-1.5">
             <button
-              class="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium
+              class="h-10 rounded-xl text-sm font-medium flex items-center justify-center
                      bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20
                      hover:bg-brand-500/20 transition-colors duration-150"
-              @click="store.addTitleElement()"
-            >
-              <span class="text-base font-black leading-none">T</span>
-              Add Title
-            </button>
-            <button
-              class="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm
-                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
-                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
-              @click="store.addSubtitleElement()"
-            >
-              <span class="text-sm leading-none">T</span>
-              Add Subtitle
-            </button>
-            <button
-              class="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm
-                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
-                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+              title="Add Text"
               @click="store.addTextElement()"
             >
-              <span class="text-xs leading-none">T</span>
-              Add Text
+              <span class="text-base font-black leading-none">T</span>
             </button>
+            <button
+              class="h-10 rounded-xl text-sm flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
+                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+              title="Add Rectangle"
+              @click="store.addRectangleElement()"
+            >
+              <span class="text-sm leading-none">▭</span>
+            </button>
+            <button
+              class="h-10 rounded-xl text-sm flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
+                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+              title="Add Like Button"
+              @click="store.addSocialButtonPreset('like')"
+            >
+              <i class="bi bi-hand-thumbs-up-fill text-sm leading-none" />
+            </button>
+            <button
+              class="h-10 rounded-xl text-sm flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
+                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+              title="Add Subscribe Button"
+              @click="store.addSocialButtonPreset('subscribe')"
+            >
+              <i class="bi bi-bell-fill text-sm leading-none" />
+            </button>
+            <button
+              class="h-10 rounded-xl text-sm flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
+                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+              title="Add Share Button"
+              @click="store.addSocialButtonPreset('share')"
+            >
+              <i class="bi bi-share-fill text-sm leading-none" />
+            </button>
+            <button
+              class="h-10 rounded-xl text-sm flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
+                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+              title="Add Camera Icon"
+              @click="store.addIconElement('camera-fill', 'bootstrap')"
+            >
+              <i class="bi bi-camera-fill text-sm leading-none" />
+            </button>
+            <button
+              class="h-10 rounded-xl text-sm flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
+                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+              title="Add Megaphone Icon"
+              @click="store.addIconElement('megaphone-fill', 'bootstrap')"
+            >
+              <i class="bi bi-megaphone-fill text-sm leading-none" />
+            </button>
+            <button
+              class="h-10 rounded-xl text-sm flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
+                     hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+              title="More Icons"
+              @click="showMoreIcons = !showMoreIcons"
+            >
+              <i class="fa-solid fa-icons text-sm leading-none" />
+            </button>
+          </div>
+          <div
+            v-if="showMoreIcons"
+            class="absolute top-2 right-3 w-72 z-30 rounded-xl border border-gray-200 dark:border-zinc-700
+                   bg-white dark:bg-zinc-900 shadow-xl p-3"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-[10px] uppercase tracking-wider text-zinc-400">More Icons</p>
+              <button
+                class="text-zinc-400 hover:text-zinc-200 transition-colors"
+                title="Close icons popup"
+                @click="showMoreIcons = false"
+              >
+                <i class="fa-solid fa-xmark text-xs" />
+              </button>
+            </div>
+            <div class="grid grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-1">
+              <button
+                v-for="icon in moreFontAwesomeIcons"
+                :key="icon.icon"
+                class="h-9 rounded-lg text-xs flex items-center justify-center
+                       text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
+                       hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
+                :title="`Add ${icon.label} icon`"
+                @click="store.addIconElement(icon.icon, 'fontawesome')"
+              >
+                <i :class="icon.previewClass" class="text-sm leading-none" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -113,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useEditorStore } from '@/store/editor'
 import TemplateCard       from '@/components/ui/TemplateCard.vue'
 import ImageUploadPanel   from '@/components/ui/ImageUploadPanel.vue'
@@ -122,9 +196,47 @@ const store = useEditorStore()
 
 const LS_KEY = 'fastee-left-panel-collapsed'
 const collapsed = ref(localStorage.getItem(LS_KEY) === 'true')
+const showMoreIcons = ref(false)
+const moreFontAwesomeIcons = [
+  { label: 'Heart', icon: 'fa-heart', previewClass: 'fa-solid fa-heart' },
+  { label: 'Star', icon: 'fa-star', previewClass: 'fa-solid fa-star' },
+  { label: 'Bolt', icon: 'fa-bolt', previewClass: 'fa-solid fa-bolt' },
+  { label: 'Camera', icon: 'fa-camera', previewClass: 'fa-solid fa-camera' },
+  { label: 'Bell', icon: 'fa-bell', previewClass: 'fa-solid fa-bell' },
+  { label: 'Comment', icon: 'fa-comment', previewClass: 'fa-solid fa-comment' },
+  { label: 'Envelope', icon: 'fa-envelope', previewClass: 'fa-solid fa-envelope' },
+  { label: 'Phone', icon: 'fa-phone', previewClass: 'fa-solid fa-phone' },
+  { label: 'House', icon: 'fa-house', previewClass: 'fa-solid fa-house' },
+  { label: 'Gear', icon: 'fa-gear', previewClass: 'fa-solid fa-gear' },
+  { label: 'Fire', icon: 'fa-fire', previewClass: 'fa-solid fa-fire' },
+  { label: 'Music', icon: 'fa-music', previewClass: 'fa-solid fa-music' },
+  { label: 'Image', icon: 'fa-image', previewClass: 'fa-solid fa-image' },
+  { label: 'Video', icon: 'fa-video', previewClass: 'fa-solid fa-video' },
+  { label: 'Trophy', icon: 'fa-trophy', previewClass: 'fa-solid fa-trophy' },
+  { label: 'Bookmark', icon: 'fa-bookmark', previewClass: 'fa-solid fa-bookmark' },
+  { label: 'Check', icon: 'fa-circle-check', previewClass: 'fa-solid fa-circle-check' },
+  { label: 'X Mark', icon: 'fa-circle-xmark', previewClass: 'fa-solid fa-circle-xmark' },
+  { label: 'User', icon: 'fa-user', previewClass: 'fa-solid fa-user' },
+  { label: 'Play', icon: 'fa-play', previewClass: 'fa-solid fa-play' },
+  { label: 'Pause', icon: 'fa-pause', previewClass: 'fa-solid fa-pause' },
+]
 
 function toggleCollapsed() {
   collapsed.value = !collapsed.value
   localStorage.setItem(LS_KEY, String(collapsed.value))
 }
+
+function onClickOutsideMoreIcons(event: MouseEvent): void {
+  const target = event.target as HTMLElement | null
+  if (target?.closest('[data-more-icons-popup]')) return
+  showMoreIcons.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', onClickOutsideMoreIcons)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onClickOutsideMoreIcons)
+})
 </script>

@@ -1,13 +1,58 @@
 import { ref, watch, type Ref } from 'vue'
 import Konva from 'konva'
-import type { TemplateElement, TextElement, ImageElement, RectElement } from '@/types'
+import type {
+  TemplateElement,
+  TextElement,
+  ImageElement,
+  RectElement,
+  IconElement,
+  PaintStyle,
+} from '@/types'
 
 const SNAP_THRESHOLD = 8
+
+const ICON_FONT_MAP: Record<IconElement['library'], string> = {
+  bootstrap: 'bootstrap-icons',
+  // Keep FA option stable by rendering equivalent glyphs via bootstrap-icons.
+  fontawesome: 'bootstrap-icons',
+}
+
+const ICON_GLYPH_MAP: Record<string, string> = {
+  'bootstrap:heart-fill': '\uF415',
+  'bootstrap:star-fill': '\uF586',
+  'bootstrap:lightning-fill': '\uF46E',
+  'bootstrap:camera-fill': '\uF219',
+  'bootstrap:megaphone-fill': '\uF483',
+  'bootstrap:hand-thumbs-up-fill': '\uF406',
+  'bootstrap:share-fill': '\uF52D',
+  'fontawesome:fa-heart': '\uF415',
+  'fontawesome:fa-star': '\uF586',
+  'fontawesome:fa-bolt': '\uF46E',
+  'fontawesome:fa-camera': '\uF219',
+  'fontawesome:fa-bell': '\uF189',
+  'fontawesome:fa-comment': '\uF24B',
+  'fontawesome:fa-envelope': '\uF32C',
+  'fontawesome:fa-phone': '\uF5B4',
+  'fontawesome:fa-house': '\uF424',
+  'fontawesome:fa-gear': '\uF3E2',
+  'fontawesome:fa-fire': '\uF7F6',
+  'fontawesome:fa-music': '\uF49E',
+  'fontawesome:fa-image': '\uF429',
+  'fontawesome:fa-video': '\uF21C',
+  'fontawesome:fa-trophy': '\uF5E6',
+  'fontawesome:fa-bookmark': '\uF199',
+  'fontawesome:fa-circle-check': '\uF26A',
+  'fontawesome:fa-circle-xmark': '\uF622',
+  'fontawesome:fa-user': '\uF4DA',
+  'fontawesome:fa-play': '\uF4F4',
+  'fontawesome:fa-pause': '\uF4C3',
+}
 
 interface UseCanvasOptions {
   onElementDragEnd?:      (id: string, x: number, y: number) => void
   onElementTransformEnd?: (id: string, attrs: Partial<TemplateElement>) => void
   onElementClick?:        (id: string) => void
+  onElementContextMenu?:  (id: string, x: number, y: number) => void
   onStageClick?:          () => void
   onTextDblClick?:        (id: string) => void
 }
@@ -18,7 +63,6 @@ export function useCanvas(
   selectedId:      Ref<string | null>,
   canvasWidth:     Ref<number>,
   canvasHeight:    Ref<number>,
-  backgroundImage: Ref<string | null>,
   backgroundColor: Ref<string>,
   options:         UseCanvasOptions = {},
 ) {
@@ -170,6 +214,90 @@ export function useCanvas(
   }
 
   // ── Node builders ─────────────────────────────────────────────────────────
+  function clearGradientAttrs(node: Konva.Shape): void {
+    node.setAttrs({
+      fillLinearGradientStartPoint: undefined,
+      fillLinearGradientEndPoint: undefined,
+      fillLinearGradientColorStops: undefined,
+      fillRadialGradientStartPoint: undefined,
+      fillRadialGradientEndPoint: undefined,
+      fillRadialGradientStartRadius: undefined,
+      fillRadialGradientEndRadius: undefined,
+      fillRadialGradientColorStops: undefined,
+      strokeLinearGradientStartPoint: undefined,
+      strokeLinearGradientEndPoint: undefined,
+      strokeLinearGradientColorStops: undefined,
+      strokeRadialGradientStartPoint: undefined,
+      strokeRadialGradientEndPoint: undefined,
+      strokeRadialGradientStartRadius: undefined,
+      strokeRadialGradientEndRadius: undefined,
+      strokeRadialGradientColorStops: undefined,
+    })
+  }
+
+  function applyPaint(
+    node: Konva.Shape,
+    kind: 'fill' | 'stroke',
+    paint: string | PaintStyle | undefined,
+    enabled = true,
+  ): void {
+    if (!enabled || !paint) {
+      node.setAttr(kind, undefined)
+      return
+    }
+
+    const style: PaintStyle = typeof paint === 'string'
+      ? { kind: 'solid', color: paint }
+      : paint
+
+    if (style.kind === 'solid') {
+      node.setAttr(kind, style.color)
+      return
+    }
+
+    node.setAttr(kind, undefined)
+    if (style.kind === 'linear') {
+      const stops = style.colorStops.flatMap(([offset, color]) => [offset, color])
+      if (kind === 'fill') {
+        node.setAttrs({
+          fillLinearGradientStartPoint: { x: style.startX, y: style.startY },
+          fillLinearGradientEndPoint:   { x: style.endX, y: style.endY },
+          fillLinearGradientColorStops: stops,
+        })
+      } else {
+        node.setAttrs({
+          strokeLinearGradientStartPoint: { x: style.startX, y: style.startY },
+          strokeLinearGradientEndPoint:   { x: style.endX, y: style.endY },
+          strokeLinearGradientColorStops: stops,
+        })
+      }
+      return
+    }
+
+    const stops = style.colorStops.flatMap(([offset, color]) => [offset, color])
+    if (kind === 'fill') {
+      node.setAttrs({
+        fillRadialGradientStartPoint:  { x: style.startX, y: style.startY },
+        fillRadialGradientEndPoint:    { x: style.endX, y: style.endY },
+        fillRadialGradientStartRadius: style.startRadius,
+        fillRadialGradientEndRadius:   style.endRadius,
+        fillRadialGradientColorStops:  stops,
+      })
+    } else {
+      node.setAttrs({
+        strokeRadialGradientStartPoint:  { x: style.startX, y: style.startY },
+        strokeRadialGradientEndPoint:    { x: style.endX, y: style.endY },
+        strokeRadialGradientStartRadius: style.startRadius,
+        strokeRadialGradientEndRadius:   style.endRadius,
+        strokeRadialGradientColorStops:  stops,
+      })
+    }
+  }
+
+  function resolveIconGlyph(el: IconElement): string {
+    return ICON_GLYPH_MAP[`${el.library}:${el.icon}`] ?? '\u2753'
+  }
+
   function buildTextNode(el: TextElement): Konva.Text {
     return new Konva.Text({
       id:          el.id,
@@ -182,6 +310,7 @@ export function useCanvas(
       stroke:      el.stroke || undefined,
       strokeWidth: el.strokeWidth || 0,
       fontStyle:   el.fontStyle,
+      textDecoration: el.textDecoration === 'underline' ? 'underline' : '',
       align:       el.align,
       width:       el.width,
       draggable:   el.draggable,
@@ -231,13 +360,12 @@ export function useCanvas(
   function buildRectNode(el: RectElement): Konva.Rect {
     const hw = el.width  / 2
     const hh = el.height / 2
-    return new Konva.Rect({
+    const node = new Konva.Rect({
       id:           el.id,
       x:            el.x + hw,
       y:            el.y + hh,
       width:        el.width,
       height:       el.height,
-      fill:         el.fill || undefined,
       cornerRadius: el.cornerRadius,
       draggable:    el.draggable,
       visible:      el.visible,
@@ -246,6 +374,34 @@ export function useCanvas(
       offsetX:      hw,
       offsetY:      hh,
     })
+    clearGradientAttrs(node)
+    applyPaint(node, 'fill', el.fill, el.fillEnabled ?? true)
+    applyPaint(node, 'stroke', el.stroke, (el.strokeWidth ?? 0) > 0)
+    node.strokeWidth(el.strokeWidth ?? 0)
+    return node
+  }
+
+  function buildIconNode(el: IconElement): Konva.Text {
+    const node = new Konva.Text({
+      id:         el.id,
+      x:          el.x,
+      y:          el.y,
+      text:       resolveIconGlyph(el),
+      fontSize:   el.size,
+      fontFamily: ICON_FONT_MAP[el.library] ?? 'bootstrap-icons',
+      fontStyle:  'normal',
+      width:      el.width,
+      align:      'center',
+      draggable:  el.draggable,
+      visible:    el.visible,
+      opacity:    el.opacity,
+      rotation:   el.rotation ?? 0,
+    })
+    clearGradientAttrs(node)
+    applyPaint(node, 'fill', el.fill, el.fillEnabled ?? true)
+    applyPaint(node, 'stroke', el.stroke, (el.strokeWidth ?? 0) > 0)
+    node.strokeWidth(el.strokeWidth ?? 0)
+    return node
   }
 
   function buildNode(el: TemplateElement): Konva.Shape {
@@ -253,68 +409,91 @@ export function useCanvas(
       case 'text':  return buildTextNode(el)
       case 'image': return buildImageNode(el)
       case 'rect':  return buildRectNode(el)
+      case 'icon':  return buildIconNode(el)
     }
   }
 
   function attachEvents(node: Konva.Shape, el: TemplateElement): void {
-    if (!el.draggable) return
+    if (el.draggable) {
+      node.on('dragmove', () => {
+        snapAndGuide(node)
+      })
 
-    node.on('dragmove', () => {
-      snapAndGuide(node)
-    })
+      node.on('dragend', () => {
+        clearGuides()
+        options.onElementDragEnd?.(el.id, node.x() - node.offsetX(), node.y() - node.offsetY())
+      })
 
-    node.on('dragend', () => {
-      clearGuides()
-      options.onElementDragEnd?.(el.id, node.x() - node.offsetX(), node.y() - node.offsetY())
-    })
+      node.on('transformend', () => {
+        const scaleX = node.scaleX()
+        const scaleY = node.scaleY()
 
-    node.on('transformend', () => {
-      const scaleX = node.scaleX()
-      const scaleY = node.scaleY()
+        const imgEl      = el.type === 'image' ? (el as ImageElement) : null
+        const baseScaleX = imgEl?.flipX ? -1 : 1
+        const baseScaleY = imgEl?.flipY ? -1 : 1
 
-      const imgEl      = el.type === 'image' ? (el as ImageElement) : null
-      const baseScaleX = imgEl?.flipX ? -1 : 1
-      const baseScaleY = imgEl?.flipY ? -1 : 1
+        const effectiveScaleX = scaleX / baseScaleX
+        const effectiveScaleY = scaleY / baseScaleY
 
-      const effectiveScaleX = scaleX / baseScaleX
-      const effectiveScaleY = scaleY / baseScaleY
+        let newOffsetX = node.offsetX()
+        let newOffsetY = node.offsetY()
 
-      let newOffsetX = node.offsetX()
-      let newOffsetY = node.offsetY()
-
-      const attrs: Partial<TemplateElement> & Record<string, unknown> = {
-        rotation: node.rotation(),
-      }
-
-      if (effectiveScaleX !== 1 || effectiveScaleY !== 1) {
-        const w = (node as Konva.Rect).width?.()
-        const h = (node as Konva.Rect).height?.()
-        if (w !== undefined) {
-          const newW = Math.round(Math.abs(w * effectiveScaleX))
-          attrs.width  = newW
-          newOffsetX   = newW / 2
-          node.offsetX(newOffsetX)
+        const attrs: Partial<TemplateElement> & Record<string, unknown> = {
+          rotation: node.rotation(),
         }
-        if (h !== undefined) {
-          const newH = Math.round(Math.abs(h * effectiveScaleY))
-          attrs.height = newH
-          newOffsetY   = newH / 2
-          node.offsetY(newOffsetY)
+
+        if (el.type === 'text') {
+          // Keep left/baseline-like anchor stable for text size changes.
+          const scaledFontSize = Math.max(8, Math.round(el.fontSize * Math.abs(effectiveScaleY)))
+          attrs.fontSize = scaledFontSize
+          if (el.width !== undefined) {
+            attrs.width = Math.max(20, Math.round(el.width * Math.abs(effectiveScaleX)))
+          }
+          node.scaleX(1)
+          node.scaleY(1)
+          attrs.x = node.x()
+          attrs.y = node.y()
+          options.onElementTransformEnd?.(el.id, attrs)
+          return
         }
-        node.scaleX(baseScaleX)
-        node.scaleY(baseScaleY)
-      }
 
-      attrs.x = node.x() - newOffsetX
-      attrs.y = node.y() - newOffsetY
+        if (effectiveScaleX !== 1 || effectiveScaleY !== 1) {
+          const w = (node as Konva.Rect).width?.()
+          const h = (node as Konva.Rect).height?.()
+          if (w !== undefined) {
+            const newW = Math.round(Math.abs(w * effectiveScaleX))
+            attrs.width  = newW
+            newOffsetX   = newW / 2
+            node.offsetX(newOffsetX)
+          }
+          if (h !== undefined) {
+            const newH = Math.round(Math.abs(h * effectiveScaleY))
+            attrs.height = newH
+            newOffsetY   = newH / 2
+            node.offsetY(newOffsetY)
+          }
+          node.scaleX(baseScaleX)
+          node.scaleY(baseScaleY)
+        }
 
-      options.onElementTransformEnd?.(el.id, attrs)
-    })
+        attrs.x = node.x() - newOffsetX
+        attrs.y = node.y() - newOffsetY
+
+        options.onElementTransformEnd?.(el.id, attrs)
+      })
+    }
 
     node.on('click tap', (e: Konva.KonvaEventObject<MouseEvent>) => {
       e.cancelBubble = true
       selectNode(node)
       options.onElementClick?.(el.id)
+    })
+
+    node.on('contextmenu', (e: Konva.KonvaEventObject<MouseEvent>) => {
+      e.evt.preventDefault()
+      e.cancelBubble = true
+      selectNode(node)
+      options.onElementContextMenu?.(el.id, e.evt.clientX, e.evt.clientY)
     })
 
     // Double-click to edit text inline
@@ -374,7 +553,7 @@ export function useCanvas(
   watch(elements,                           () => { syncElements()  }, { deep: true })
   watch(selectedId,                         () => { syncSelection() })
   watch([canvasWidth, canvasHeight],        () => { resizeStage()   })
-  watch([backgroundImage, backgroundColor], () => { syncBackground() })
+  watch(backgroundColor, () => { syncBackground() })
 
   return { stage, layer, transformer, init, syncElements, syncBackground, syncSelection, resizeStage }
 }

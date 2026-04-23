@@ -75,6 +75,58 @@
       </Transition>
     </div>
 
+    <div
+      v-if="elementContextMenu.visible"
+      class="fixed z-50 min-w-40 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl p-1"
+      :style="{ left: `${elementContextMenu.x}px`, top: `${elementContextMenu.y}px` }"
+      @click.stop
+    >
+      <button
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="bringSelectedElementToFront"
+      >
+        Bring to front
+      </button>
+      <button
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="sendSelectedElementToBack"
+      >
+        Send to back
+      </button>
+      <button
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="rotateSelectedElement180"
+      >
+        Rotate 180deg
+      </button>
+      <button
+        v-if="selectedContextElement?.type === 'image'"
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="flipSelectedElementHorizontal"
+      >
+        Flip horizontal
+      </button>
+      <button
+        v-if="selectedContextElement?.type === 'image'"
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="flipSelectedElementVertical"
+      >
+        Flip vertical
+      </button>
+      <button
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-red-300 hover:bg-red-900/30"
+        @click="deleteSelectedElementFromContext"
+      >
+        Delete
+      </button>
+    </div>
+
     <!-- Zoom toolbar -->
     <div
       v-if="store.currentTemplate"
@@ -154,10 +206,20 @@ function onWheelZoom(e: WheelEvent): void {
 
 const canvasW = computed(() => store.canvasSize.width)
 const canvasH = computed(() => store.canvasSize.height)
-const bgColor = computed(() => store.currentTemplate?.background ?? '#000000')
-const bgImage = computed(() => store.backgroundImage)
+const bgColor = computed(() => '#ffffff')
 
 const panOffset  = ref({ x: 0, y: 0 })
+const elementContextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  elementId: null as string | null,
+})
+const selectedContextElement = computed(() =>
+  elementContextMenu.value.elementId
+    ? store.elements.find(el => el.id === elementContextMenu.value.elementId) ?? null
+    : null,
+)
 
 const wrapperStyle = computed(() => ({
   width:           `${canvasW.value}px`,
@@ -183,7 +245,6 @@ const { stage, layer, init, syncElements, syncBackground } = useCanvas(
   computed(() => store.selectedId),
   canvasW,
   canvasH,
-  bgImage,
   bgColor,
   {
     onElementDragEnd(id, x, y) {
@@ -194,9 +255,23 @@ const { stage, layer, init, syncElements, syncBackground } = useCanvas(
     },
     onElementClick(id) {
       store.selectElement(id)
+      closeElementContextMenu()
+    },
+    onElementContextMenu(id, x, y) {
+      const contextElement = store.elements.find(el => el.id === id)
+      const itemCount = contextElement?.type === 'image' ? 6 : 4
+      const menuHeight = itemCount * 32 + 8
+      store.selectElement(id)
+      elementContextMenu.value = {
+        visible: true,
+        x: Math.min(x, window.innerWidth - 180),
+        y: Math.min(y, window.innerHeight - menuHeight),
+        elementId: id,
+      }
     },
     onStageClick() {
       store.clearSelection()
+      closeElementContextMenu()
     },
     onTextDblClick(id) {
       startTextEdit(id)
@@ -209,10 +284,14 @@ defineExpose({ stage })
 // ── Lifecycle ─────────────────────────────────────────────────────────────
 onMounted(() => {
   window.addEventListener('resize', onResize)
+  window.addEventListener('click', closeElementContextMenu)
+  window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
+  window.removeEventListener('click', closeElementContextMenu)
+  window.removeEventListener('keydown', onGlobalKeydown)
   stage.value?.destroy()
 })
 
@@ -256,6 +335,7 @@ const textOverlayStyle = computed(() => {
     fontSize:   `${el.fontSize}px`,
     fontStyle:  el.fontStyle.includes('italic') ? 'italic' : 'normal',
     fontWeight: el.fontStyle.includes('bold') ? 'bold' : 'normal',
+    textDecoration: el.textDecoration === 'underline' ? 'underline' : 'none',
     color:      el.color,
     textAlign:  el.align,
     lineHeight: '1.2',
@@ -366,6 +446,58 @@ function onContainerMouseMove(e: MouseEvent): void {
 
 function onContainerMouseUp(): void {
   isPanning.value = false
+}
+
+function closeElementContextMenu(): void {
+  elementContextMenu.value.visible   = false
+  elementContextMenu.value.elementId = null
+}
+
+function bringSelectedElementToFront(): void {
+  const id = elementContextMenu.value.elementId
+  if (!id) return
+  store.bringToFront(id)
+  closeElementContextMenu()
+}
+
+function sendSelectedElementToBack(): void {
+  const id = elementContextMenu.value.elementId
+  if (!id) return
+  store.sendToBack(id)
+  closeElementContextMenu()
+}
+
+function rotateSelectedElement180(): void {
+  const el = selectedContextElement.value
+  if (!el) return
+  const nextRotation = ((el.rotation ?? 0) + 180) % 360
+  store.commitElementUpdate(el.id, { rotation: nextRotation })
+  closeElementContextMenu()
+}
+
+function flipSelectedElementHorizontal(): void {
+  const el = selectedContextElement.value
+  if (!el || el.type !== 'image') return
+  store.commitElementUpdate(el.id, { flipX: !el.flipX })
+  closeElementContextMenu()
+}
+
+function flipSelectedElementVertical(): void {
+  const el = selectedContextElement.value
+  if (!el || el.type !== 'image') return
+  store.commitElementUpdate(el.id, { flipY: !el.flipY })
+  closeElementContextMenu()
+}
+
+function deleteSelectedElementFromContext(): void {
+  const id = elementContextMenu.value.elementId
+  if (!id) return
+  store.removeElement(id)
+  closeElementContextMenu()
+}
+
+function onGlobalKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closeElementContextMenu()
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────

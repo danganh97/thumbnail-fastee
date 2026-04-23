@@ -13,9 +13,9 @@
       class="w-full aspect-video flex items-end p-2.5 bg-cover bg-center"
       :style="previewStyle"
     >
-      <!-- Mini text preview — only shown when no image preview -->
+      <!-- Mini text preview from template text setup -->
       <span
-        v-if="previewText && !template.previewUrl"
+        v-if="previewText"
         class="text-white text-[9px] font-bold leading-tight line-clamp-2 opacity-90 drop-shadow"
         style="font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em;"
       >
@@ -40,6 +40,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Template } from '@/types'
+import sharedTemplateBg from '@/assets/backgrounds/template-shared.svg'
 
 const props = defineProps<{
   template: Template
@@ -50,11 +51,11 @@ const emit = defineEmits<{
   (e: 'select', template: Template): void
 }>()
 
-const previewStyle = computed(() =>
-  props.template.previewUrl
-    ? { backgroundImage: `url(${props.template.previewUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-    : { background: props.template.background },
-)
+const previewStyle = computed(() => ({
+  backgroundImage: `url(${sharedTemplateBg})`,
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+}))
 
 const previewText = computed(() => {
   const textEl = props.template.elements.find(el => el.type === 'text')

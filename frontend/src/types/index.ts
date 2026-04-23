@@ -33,7 +33,36 @@ export interface ImageType {
 }
 
 // ── Element Types ─────────────────────────────────────────────────────────────
-export type ElementType = 'text' | 'image' | 'rect'
+export type ElementType = 'text' | 'image' | 'rect' | 'icon'
+
+export type GradientStop = [number, string]
+
+export interface SolidPaint {
+  kind: 'solid'
+  color: string
+}
+
+export interface LinearGradientPaint {
+  kind: 'linear'
+  startX: number
+  startY: number
+  endX: number
+  endY: number
+  colorStops: GradientStop[]
+}
+
+export interface RadialGradientPaint {
+  kind: 'radial'
+  startX: number
+  startY: number
+  startRadius: number
+  endX: number
+  endY: number
+  endRadius: number
+  colorStops: GradientStop[]
+}
+
+export type PaintStyle = SolidPaint | LinearGradientPaint | RadialGradientPaint
 
 export interface BaseElement {
   id: string
@@ -55,6 +84,7 @@ export interface TextElement extends BaseElement {
   stroke: string
   strokeWidth: number
   fontStyle: string
+  textDecoration?: 'none' | 'underline'
   align: 'left' | 'center' | 'right'
   width?: number
 }
@@ -64,6 +94,8 @@ export interface ImageElement extends BaseElement {
   src: string
   width: number
   height: number
+  sourceWidth?: number
+  sourceHeight?: number
   flipX?: boolean
   flipY?: boolean
   isBackground?: boolean
@@ -73,11 +105,27 @@ export interface RectElement extends BaseElement {
   type: 'rect'
   width: number
   height: number
-  fill: string
+  fill: string | PaintStyle
+  fillEnabled?: boolean
+  stroke?: string | PaintStyle
+  strokeWidth?: number
   cornerRadius: number
 }
 
-export type TemplateElement = TextElement | ImageElement | RectElement
+export interface IconElement extends BaseElement {
+  type: 'icon'
+  library: 'bootstrap' | 'fontawesome'
+  icon: string
+  size: number
+  width: number
+  height: number
+  fill: string | PaintStyle
+  fillEnabled?: boolean
+  stroke?: string | PaintStyle
+  strokeWidth?: number
+}
+
+export type TemplateElement = TextElement | ImageElement | RectElement | IconElement
 
 // ── Template ──────────────────────────────────────────────────────────────────
 export interface Template {
@@ -141,6 +189,21 @@ export const PLATFORM_IMAGE_TYPES: Record<PlatformId, ImageTypeId[]> = {
   instagram: ['instagram_post', 'instagram_reel', 'instagram_story'],
 }
 
-export const FONTS = ['Inter', 'Poppins', 'Bebas Neue', 'Arial', 'Georgia']
+export const FONTS = [
+  'Inter',
+  'Poppins',
+  'Bebas Neue',
+  'Roboto',
+  'Montserrat',
+  'Oswald',
+  'Anton',
+  'Open Sans',
+  'Lato',
+  'Raleway',
+  'Nunito',
+  'Playfair Display',
+  'Arial',
+  'Georgia',
+]
 
 export const FONT_SIZES = [24, 32, 40, 48, 56, 64, 72, 80, 96, 120]

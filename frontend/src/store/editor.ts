@@ -3,16 +3,50 @@ import { ref, computed } from 'vue'
 import { v4 as uuid } from 'uuid'
 import type {
   Platform, ImageType, Template, TemplateElement,
-  TextElement, ImageElement, PlatformId, ImageTypeId,
+  TextElement, ImageElement, RectElement, IconElement, PaintStyle, PlatformId, ImageTypeId,
 } from '@/types'
-import { PLATFORMS, IMAGE_TYPES } from '@/types'
+import { PLATFORMS, IMAGE_TYPES, PLATFORM_IMAGE_TYPES } from '@/types'
 
 const MAX_HISTORY = 50
+const TEXT_ICON_COLOR_MODE_KEY = 'fastee-text-icon-color-mode'
+
+const ICON_LIBRARY_ENTRIES: Record<'bootstrap' | 'fontawesome', string[]> = {
+  bootstrap: ['heart-fill', 'star-fill', 'lightning-fill', 'camera-fill', 'megaphone-fill'],
+  fontawesome: [
+    'fa-heart',
+    'fa-star',
+    'fa-bolt',
+    'fa-camera',
+    'fa-bell',
+    'fa-comment',
+    'fa-envelope',
+    'fa-phone',
+    'fa-house',
+    'fa-gear',
+    'fa-fire',
+    'fa-music',
+    'fa-image',
+    'fa-video',
+    'fa-trophy',
+    'fa-bookmark',
+    'fa-circle-check',
+    'fa-circle-xmark',
+    'fa-user',
+    'fa-play',
+    'fa-pause',
+  ],
+}
 
 interface PersistedSession {
   templateId: string | null
-  elements:   TemplateElement[]
 }
+
+interface PersistedDraft {
+  templateId: string
+  elements: TemplateElement[]
+}
+
+type TextIconColorMode = 'dark' | 'light'
 
 export const useEditorStore = defineStore('editor', () => {
   // ── State ──────────────────────────────────────────────────────────────────
@@ -27,14 +61,9 @@ export const useEditorStore = defineStore('editor', () => {
   const isDirty          = ref(false)
   const exportFormat     = ref<'png' | 'jpeg'>('png')
   const exportQuality    = ref(0.92)
-
-  // ── Derived background image (backward-compat with components/useCanvas) ──
-  const backgroundImage = computed<string | null>(() => {
-    const bgEl = elements.value.find(
-      el => el.type === 'image' && (el as ImageElement).isBackground,
-    )
-    return bgEl ? (bgEl as ImageElement).src : null
-  })
+  const textIconColorMode = ref<TextIconColorMode>(
+    localStorage.getItem(TEXT_ICON_COLOR_MODE_KEY) === 'light' ? 'light' : 'dark',
+  )
 
   // ── Computed ───────────────────────────────────────────────────────────────
   const selectedElement = computed(() =>
@@ -63,6 +92,49 @@ export const useEditorStore = defineStore('editor', () => {
         : { width: 1280, height: 720 },
   )
 
+  function isLegacyFullCanvasRect(el: TemplateElement): el is RectElement {
+    if (el.type !== 'rect') return false
+    const size = canvasSize.value
+    return el.x === 0 && el.y === 0 && el.width === size.width && el.height === size.height
+  }
+
+  function sanitizeElementsForEditor(rawElements: TemplateElement[]): TemplateElement[] {
+    return rawElements.map(raw => {
+      if (raw.type === 'image' && (raw as ImageElement).isBackground) {
+        const { isBackground, ...rest } = raw as ImageElement
+        return { ...rest, draggable: true } as ImageElement
+      }
+      if (isLegacyFullCanvasRect(raw) && !raw.draggable) {
+        return { ...raw, draggable: true }
+      }
+      return raw
+    })
+  }
+
+  function moveElement(fromIndex: number, toIndex: number): void {
+    if (fromIndex === toIndex) return
+    const [moved] = elements.value.splice(fromIndex, 1)
+    elements.value.splice(toIndex, 0, moved)
+  }
+
+  function commitLayerReorderIfChanged(beforeOrder: string[]): void {
+    const afterOrder = elements.value.map(el => el.id)
+    const changed = beforeOrder.length !== afterOrder.length
+      || beforeOrder.some((id, i) => id !== afterOrder[i])
+    if (!changed) return
+    isDirty.value = true
+    snapshot()
+  }
+
+  function defaultTextIconColor(): string {
+    return textIconColorMode.value === 'light' ? '#ffffff' : '#000000'
+  }
+
+  function setTextIconColorMode(mode: TextIconColorMode): void {
+    textIconColorMode.value = mode
+    localStorage.setItem(TEXT_ICON_COLOR_MODE_KEY, mode)
+  }
+
   // ── History ────────────────────────────────────────────────────────────────
   function snapshot(): void {
     const slice = JSON.parse(JSON.stringify(elements.value)) as TemplateElement[]
@@ -83,36 +155,154 @@ export const useEditorStore = defineStore('editor', () => {
     return `fastee-${p}-${t}`
   }
 
-  function saveToLocalStorage(): void {
-    const key = storageKey()
+  function sessionKey(): string | null {
+    const p = currentPlatform.value?.id
+    const t = currentImageType.value?.id
+    if (!p || !t) return null
+    return `fastee-session-${p}-${t}`
+  }
+
+  function draftKey(templateId: string): string {
+    return `fastee-draft-${templateId}`
+  }
+
+  function saveSessionSelection(templateId: string | null = currentTemplate.value?.id ?? null): void {
+    const key = sessionKey()
     if (!key) return
-    const session: PersistedSession = {
-      templateId: currentTemplate.value?.id ?? null,
-      elements:   JSON.parse(JSON.stringify(elements.value)),
-    }
+    const session: PersistedSession = { templateId }
     localStorage.setItem(key, JSON.stringify(session))
+  }
+
+  function saveDraftForCurrentTemplate(): void {
+    const templateId = currentTemplate.value?.id
+    if (!templateId) return
+    const payload: PersistedDraft = {
+      templateId,
+      elements: JSON.parse(JSON.stringify(elements.value)),
+    }
+    localStorage.setItem(draftKey(templateId), JSON.stringify(payload))
+    saveSessionSelection(templateId)
+  }
+
+  function restoreDraftForTemplate(templateId: string): boolean {
+    const raw = localStorage.getItem(draftKey(templateId))
+    if (!raw) return false
+    try {
+      const draft = JSON.parse(raw) as PersistedDraft
+      if (draft.templateId !== templateId || !draft.elements?.length) return false
+      elements.value = sanitizeElementsForEditor(draft.elements)
+      history.value = [JSON.parse(JSON.stringify(elements.value))]
+      historyIndex.value = 0
+      selectedId.value = currentTemplate.value?.mainTextId
+        ?? elements.value.find(el => el.type === 'text' && el.draggable)?.id
+        ?? null
+      isDirty.value = false
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  function migrateLegacySession(): void {
+    const legacyKey = storageKey()
+    if (!legacyKey) return
+    const raw = localStorage.getItem(legacyKey)
+    if (!raw) return
+    try {
+      const session = JSON.parse(raw) as { templateId?: string | null; elements?: TemplateElement[] }
+      if (!session.templateId || !session.elements?.length) {
+        localStorage.removeItem(legacyKey)
+        return
+      }
+      const legacyDraft: PersistedDraft = {
+        templateId: session.templateId,
+        elements: session.elements,
+      }
+      localStorage.setItem(draftKey(session.templateId), JSON.stringify(legacyDraft))
+      saveSessionSelection(session.templateId)
+      localStorage.removeItem(legacyKey)
+    } catch {
+      localStorage.removeItem(legacyKey)
+    }
+  }
+
+  function saveToLocalStorage(): void {
+    saveDraftForCurrentTemplate()
     isDirty.value = false
   }
 
-  function restoreFromLocalStorage(): void {
-    const key = storageKey()
+  function restoreFromLocalStorage(): boolean {
+    migrateLegacySession()
+    const sKey = sessionKey()
+    if (!sKey) return false
+
+    const targetTemplateId = currentTemplate.value?.id
+      ?? (() => {
+        const raw = localStorage.getItem(sKey)
+        if (!raw) return null
+        try {
+          const session = JSON.parse(raw) as PersistedSession
+          return session.templateId ?? null
+        } catch {
+          return null
+        }
+      })()
+
+    if (!targetTemplateId) return false
+
+    if (allTemplates.value.length > 0) {
+      const tpl = allTemplates.value.find(t => t.id === targetTemplateId)
+      if (tpl) currentTemplate.value = tpl
+    }
+
+    const restored = restoreDraftForTemplate(targetTemplateId)
+    if (restored) {
+      saveSessionSelection(targetTemplateId)
+      return true
+    }
+
+    saveSessionSelection(targetTemplateId)
+    return false
+  }
+
+  function restoreDraftForCurrentTemplate(): boolean {
+    const templateId = currentTemplate.value?.id
+    if (!templateId) return false
+    return restoreDraftForTemplate(templateId)
+  }
+
+  function restoreDraftByTemplateId(templateId: string): boolean {
+    if (allTemplates.value.length > 0) {
+      const tpl = allTemplates.value.find(t => t.id === templateId)
+      if (tpl) currentTemplate.value = tpl
+    }
+    const restored = restoreDraftForTemplate(templateId)
+    if (restored) saveSessionSelection(templateId)
+    return restored
+  }
+
+  function clearSessionSelection(): void {
+    const key = sessionKey()
     if (!key) return
+    const session: PersistedSession = { templateId: null }
+    localStorage.setItem(key, JSON.stringify(session))
+  }
+
+  function markTemplateSelection(templateId: string | null): void {
+    saveSessionSelection(templateId)
+  }
+
+  function restoreSessionTemplateId(): string | null {
+    migrateLegacySession()
+    const key = sessionKey()
+    if (!key) return null
     const raw = localStorage.getItem(key)
-    if (!raw) return
+    if (!raw) return null
     try {
       const session = JSON.parse(raw) as PersistedSession
-      if (session.templateId && allTemplates.value.length > 0) {
-        const tpl = allTemplates.value.find(t => t.id === session.templateId)
-        if (tpl) currentTemplate.value = tpl
-      }
-      if (session.elements?.length) {
-        elements.value     = session.elements
-        history.value      = [JSON.parse(JSON.stringify(elements.value))]
-        historyIndex.value = 0
-      }
-      isDirty.value = false
+      return session.templateId ?? null
     } catch {
-      // silently ignore malformed stored data
+      return null
     }
   }
 
@@ -126,6 +316,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function selectPlatform(platformId: PlatformId): void {
+    if (currentPlatform.value?.id === platformId) return
     currentPlatform.value  = PLATFORMS[platformId]
     currentImageType.value = null
     currentTemplate.value  = null
@@ -135,6 +326,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function selectImageType(imageTypeId: ImageTypeId): void {
+    if (currentImageType.value?.id === imageTypeId) return
     currentImageType.value = IMAGE_TYPES[imageTypeId]
     currentTemplate.value  = null
     elements.value         = []
@@ -143,10 +335,17 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function loadTemplate(template: Template): void {
+    const wasCurrentTemplate = currentTemplate.value?.id === template.id
+    if (wasCurrentTemplate) {
+      markTemplateSelection(template.id)
+      return
+    }
     currentTemplate.value  = template
     currentPlatform.value  = PLATFORMS[template.platform]
     currentImageType.value = IMAGE_TYPES[template.imageType]
-    elements.value         = JSON.parse(JSON.stringify(template.elements)) as TemplateElement[]
+    elements.value         = sanitizeElementsForEditor(
+      JSON.parse(JSON.stringify(template.elements)) as TemplateElement[],
+    )
     isDirty.value          = false
     history.value          = []
     historyIndex.value     = -1
@@ -158,6 +357,36 @@ export const useEditorStore = defineStore('editor', () => {
       elements.value.find(el => el.type === 'text' && el.draggable)?.id ??
       null
     selectedId.value = focusId
+    markTemplateSelection(template.id)
+  }
+
+  function createCustomTemplate(width: number, height: number, name = 'Custom Canvas'): Template {
+    const fallbackPlatformId: PlatformId = currentPlatform.value?.id ?? 'youtube'
+    const defaultTypeForPlatform = PLATFORM_IMAGE_TYPES[fallbackPlatformId]?.[0] ?? 'youtube_video'
+    const fallbackImageTypeId: ImageTypeId = currentImageType.value?.id ?? defaultTypeForPlatform
+
+    const template: Template = {
+      id: `custom_${width}x${height}`,
+      name: `${name} (${width}x${height})`,
+      platform: fallbackPlatformId,
+      imageType: fallbackImageTypeId,
+      width,
+      height,
+      background: '#ffffff',
+      elements: [],
+    }
+
+    currentTemplate.value = template
+    currentPlatform.value = PLATFORMS[fallbackPlatformId]
+    currentImageType.value = IMAGE_TYPES[fallbackImageTypeId]
+    elements.value = []
+    history.value = []
+    historyIndex.value = -1
+    snapshot()
+    selectedId.value = null
+    isDirty.value = false
+    markTemplateSelection(template.id)
+    return template
   }
 
   function selectElement(id: string | null): void {
@@ -167,13 +396,25 @@ export const useEditorStore = defineStore('editor', () => {
   function updateElement(id: string, patch: Partial<TemplateElement>): void {
     const idx = elements.value.findIndex(el => el.id === id)
     if (idx === -1) return
-    elements.value[idx] = { ...elements.value[idx], ...patch } as TemplateElement
+    const merged = { ...elements.value[idx], ...patch } as TemplateElement
+    elements.value[idx] = merged
   }
 
   function commitElementUpdate(id: string, patch: Partial<TemplateElement>): void {
     updateElement(id, patch)
     isDirty.value = true
     snapshot()
+  }
+
+  function pushElementAndCommit(el: TemplateElement): void {
+    elements.value.push(el)
+    selectedId.value = el.id
+    isDirty.value    = true
+    snapshot()
+  }
+
+  function solid(color: string): PaintStyle {
+    return { kind: 'solid', color }
   }
 
   function addTextElement(initialText?: string): void {
@@ -186,20 +427,18 @@ export const useEditorStore = defineStore('editor', () => {
       text:        initialText ?? 'New Text',
       fontSize:    48,
       fontFamily:  'Inter',
-      color:       '#ffffff',
+      color:       defaultTextIconColor(),
       stroke:      '',
       strokeWidth: 0,
       fontStyle:   'normal',
+      textDecoration: 'none',
       align:       'center',
       width:       300,
       draggable:   true,
       visible:     true,
       opacity:     1,
     }
-    elements.value.push(el)
-    selectedId.value = el.id
-    isDirty.value    = true
-    snapshot()
+    pushElementAndCommit(el)
   }
 
   function addTitleElement(): void {
@@ -212,20 +451,18 @@ export const useEditorStore = defineStore('editor', () => {
       text:        'YOUR TITLE HERE',
       fontSize:    80,
       fontFamily:  'Bebas Neue',
-      color:       '#ffffff',
+      color:       defaultTextIconColor(),
       stroke:      '',
       strokeWidth: 0,
       fontStyle:   'bold',
+      textDecoration: 'none',
       align:       'center',
       width:       640,
       draggable:   true,
       visible:     true,
       opacity:     1,
     }
-    elements.value.push(el)
-    selectedId.value = el.id
-    isDirty.value    = true
-    snapshot()
+    pushElementAndCommit(el)
   }
 
   function addSubtitleElement(): void {
@@ -238,20 +475,129 @@ export const useEditorStore = defineStore('editor', () => {
       text:        'Your subtitle goes here',
       fontSize:    40,
       fontFamily:  'Inter',
-      color:       '#e5e5e5',
+      color:       defaultTextIconColor(),
       stroke:      '',
       strokeWidth: 0,
       fontStyle:   'normal',
+      textDecoration: 'none',
       align:       'center',
       width:       520,
       draggable:   true,
       visible:     true,
       opacity:     1,
     }
-    elements.value.push(el)
-    selectedId.value = el.id
-    isDirty.value    = true
+    pushElementAndCommit(el)
+  }
+
+  function addRectangleElement(): void {
+    const size = canvasSize.value
+    const el: RectElement = {
+      id:           uuid(),
+      type:         'rect',
+      x:            Math.round(size.width / 2 - 160),
+      y:            Math.round(size.height / 2 - 90),
+      width:        320,
+      height:       180,
+      fill:         solid('#3b82f6'),
+      fillEnabled:  true,
+      stroke:       solid('#ffffff'),
+      strokeWidth:  0,
+      cornerRadius: 16,
+      draggable:    true,
+      visible:      true,
+      opacity:      1,
+    }
+    pushElementAndCommit(el)
+  }
+
+  function addCircleElement(): void {
+    const size = canvasSize.value
+    const diameter = 220
+    const el: RectElement = {
+      id:           uuid(),
+      type:         'rect',
+      x:            Math.round(size.width / 2 - diameter / 2),
+      y:            Math.round(size.height / 2 - diameter / 2),
+      width:        diameter,
+      height:       diameter,
+      fill:         solid('#22c55e'),
+      fillEnabled:  true,
+      stroke:       solid('#ffffff'),
+      strokeWidth:  0,
+      cornerRadius: diameter / 2,
+      draggable:    true,
+      visible:      true,
+      opacity:      1,
+    }
+    pushElementAndCommit(el)
+  }
+
+  function addIconElement(icon: string, library: 'bootstrap' | 'fontawesome' = 'bootstrap'): void {
+    if (!ICON_LIBRARY_ENTRIES[library].includes(icon)) return
+    const size = canvasSize.value
+    const el: IconElement = {
+      id:          uuid(),
+      type:        'icon',
+      library,
+      icon,
+      x:           Math.round(size.width / 2 - 48),
+      y:           Math.round(size.height / 2 - 48),
+      size:        96,
+      width:       96,
+      height:      96,
+      fill:        solid(defaultTextIconColor()),
+      fillEnabled: true,
+      stroke:      solid('#000000'),
+      strokeWidth: 0,
+      draggable:   true,
+      visible:     true,
+      opacity:     1,
+    }
+    pushElementAndCommit(el)
+  }
+
+  function addSocialButtonPreset(kind: 'like' | 'subscribe' | 'share'): void {
+    const size = canvasSize.value
+    const config = {
+      like:      { library: 'bootstrap' as const, icon: 'hand-thumbs-up-fill', color: defaultTextIconColor() },
+      subscribe: { library: 'fontawesome' as const, icon: 'fa-bell', color: defaultTextIconColor() },
+      share:     { library: 'bootstrap' as const, icon: 'share-fill', color: defaultTextIconColor() },
+    }[kind]
+    const iconSize = 112
+    const el: IconElement = {
+      id:          uuid(),
+      type:        'icon',
+      library:     config.library,
+      icon:        config.icon,
+      x:           Math.round(size.width / 2 - iconSize / 2),
+      y:           Math.round(size.height / 2 - iconSize / 2),
+      size:        iconSize,
+      width:       iconSize,
+      height:      iconSize,
+      fill:        solid(config.color),
+      fillEnabled: true,
+      stroke:      solid('#ffffff'),
+      strokeWidth: 0,
+      draggable:   true,
+      visible:     true,
+      opacity:     1,
+    }
+    pushElementAndCommit(el)
+  }
+
+  function resetToTemplateDefaults(): void {
+    if (!currentTemplate.value) return
+    const template = currentTemplate.value
+    elements.value = sanitizeElementsForEditor(
+      JSON.parse(JSON.stringify(template.elements)) as TemplateElement[],
+    )
+    history.value      = []
+    historyIndex.value = -1
     snapshot()
+    selectedId.value = template.mainTextId
+      ?? elements.value.find(el => el.type === 'text' && el.draggable)?.id
+      ?? null
+    isDirty.value = false
   }
 
   function duplicateElement(id: string): void {
@@ -269,41 +615,88 @@ export const useEditorStore = defineStore('editor', () => {
     snapshot()
   }
 
+  function reorderElement(id: string, toIndex: number): void {
+    const fromIndex = elements.value.findIndex(el => el.id === id)
+    if (fromIndex === -1) return
+
+    const beforeOrder = elements.value.map(el => el.id)
+    const safeTo = Math.max(0, Math.min(elements.value.length - 1, toIndex))
+
+    moveElement(fromIndex, safeTo)
+    commitLayerReorderIfChanged(beforeOrder)
+  }
+
+  function bringToFront(id: string): void {
+    const idx = elements.value.findIndex(el => el.id === id)
+    if (idx === -1) return
+    reorderElement(id, elements.value.length - 1)
+  }
+
+  function sendToBack(id: string): void {
+    const idx = elements.value.findIndex(el => el.id === id)
+    if (idx === -1) return
+    reorderElement(id, 0)
+  }
+
+  function bringForward(id: string): void {
+    const idx = elements.value.findIndex(el => el.id === id)
+    if (idx === -1) return
+    reorderElement(id, idx + 1)
+  }
+
+  function sendBackward(id: string): void {
+    const idx = elements.value.findIndex(el => el.id === id)
+    if (idx === -1) return
+    reorderElement(id, idx - 1)
+  }
+
+  function setElementOrder(orderIdsBottomToTop: string[]): void {
+    const beforeOrder = elements.value.map(el => el.id)
+    const byId        = new Map(elements.value.map(el => [el.id, el] as const))
+    const next: TemplateElement[] = []
+
+    for (const id of orderIdsBottomToTop) {
+      const el = byId.get(id)
+      if (!el) continue
+      next.push(el)
+      byId.delete(id)
+    }
+
+    // Preserve unknown IDs in their previous order (safety for stale UI state).
+    for (const el of elements.value) {
+      if (byId.has(el.id)) next.push(el)
+    }
+
+    elements.value = next
+    commitLayerReorderIfChanged(beforeOrder)
+  }
+
   /**
    * Unified image insertion — used by upload panel, paste, and drag-drop.
-   * When isBackground=true, any existing background element is replaced and
-   * the new element is inserted at index 0 (behind everything else).
    */
-  function addImageElement(src: string, opts?: { isBackground?: boolean }): void {
+  function addImageElement(src: string): void {
     const size = canvasSize.value
     const img  = new window.Image()
     img.onload = () => {
-      if (opts?.isBackground) {
-        elements.value = elements.value.filter(
-          el => !(el.type === 'image' && (el as ImageElement).isBackground),
-        )
-      }
-
-      const maxW  = opts?.isBackground ? size.width  : size.width  * 0.6
-      const maxH  = opts?.isBackground ? size.height : size.height * 0.6
+      const maxW  = size.width  * 0.6
+      const maxH  = size.height * 0.6
       const ratio = Math.min(maxW / img.width, maxH / img.height, 1)
 
       const el: ImageElement = {
         id:           uuid(),
         type:         'image',
         src,
-        x:            opts?.isBackground ? 0 : Math.round((size.width  - img.width  * ratio) / 2),
-        y:            opts?.isBackground ? 0 : Math.round((size.height - img.height * ratio) / 2),
-        width:        opts?.isBackground ? size.width  : Math.round(img.width  * ratio),
-        height:       opts?.isBackground ? size.height : Math.round(img.height * ratio),
+        x:            Math.round((size.width  - img.width  * ratio) / 2),
+        y:            Math.round((size.height - img.height * ratio) / 2),
+        width:        Math.round(img.width  * ratio),
+        height:       Math.round(img.height * ratio),
+        sourceWidth:  img.width,
+        sourceHeight: img.height,
         draggable:    true,
         visible:      true,
         opacity:      1,
-        isBackground: opts?.isBackground ?? false,
       }
-
-      if (opts?.isBackground) elements.value.unshift(el)
-      else elements.value.push(el)
+      elements.value.push(el)
 
       selectedId.value = el.id
       isDirty.value    = true
@@ -317,22 +710,6 @@ export const useEditorStore = defineStore('editor', () => {
     if (selectedId.value === id) selectedId.value = null
     isDirty.value = true
     snapshot()
-  }
-
-  /**
-   * Convenience wrapper kept for backward compatibility.
-   * Passing null removes any existing background element.
-   */
-  function setBackgroundImage(src: string | null): void {
-    if (src === null) {
-      elements.value = elements.value.filter(
-        el => !(el.type === 'image' && (el as ImageElement).isBackground),
-      )
-      isDirty.value = true
-      snapshot()
-      return
-    }
-    addImageElement(src, { isBackground: true })
   }
 
   function undo(): void {
@@ -357,16 +734,19 @@ export const useEditorStore = defineStore('editor', () => {
     // state
     currentPlatform, currentImageType, currentTemplate,
     elements, selectedId, allTemplates,
-    isDirty, backgroundImage, exportFormat, exportQuality,
+    isDirty, exportFormat, exportQuality, textIconColorMode,
     // computed
     selectedElement, templatesForPlatform, templatesForCurrentType,
     canUndo, canRedo, canvasSize,
     // actions
     setTemplates, selectPlatform, selectImageType,
-    loadTemplate, selectElement, updateElement, commitElementUpdate,
+    loadTemplate, createCustomTemplate, selectElement, updateElement, commitElementUpdate,
     addTextElement, addTitleElement, addSubtitleElement, duplicateElement,
-    addImageElement, removeElement, setBackgroundImage,
+    addRectangleElement, addCircleElement, addIconElement, addSocialButtonPreset, resetToTemplateDefaults,
+    addImageElement, removeElement, setTextIconColorMode,
+    reorderElement, setElementOrder, bringToFront, sendToBack, bringForward, sendBackward,
     undo, redo, clearSelection,
-    saveToLocalStorage, restoreFromLocalStorage, markClean,
+    saveToLocalStorage, restoreFromLocalStorage, saveDraftForCurrentTemplate, restoreDraftForCurrentTemplate,
+    restoreDraftByTemplateId, restoreSessionTemplateId, markTemplateSelection, clearSessionSelection, markClean,
   }
 })
