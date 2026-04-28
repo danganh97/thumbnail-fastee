@@ -70,7 +70,7 @@
         <div class="h-px bg-gray-100 dark:bg-zinc-800 mx-4" />
 
         <!-- Quick Add -->
-        <div class="relative" data-more-icons-popup>
+        <div class="relative" data-ios-more-popup>
           <p class="section-label">Quick Add</p>
           <div class="px-3 pb-3 grid grid-cols-4 gap-1.5">
             <button
@@ -140,20 +140,21 @@
               class="h-10 rounded-xl text-sm flex items-center justify-center
                      text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
                      hover:border-brand-500 hover:text-brand-500 transition-colors duration-150"
-              title="More Icons"
-              @click="toggleMoreIcons($event)"
+              title="Open More Icons Popup"
+              data-ios-icons-trigger
+              @click="toggleIosIconsPopup($event)"
             >
               <i class="fa-solid fa-icons text-sm leading-none" />
             </button>
           </div>
           <div
-            v-if="showMoreIcons"
-            data-more-icons-panel
+            v-if="showIosIconsPopup"
+            data-ios-icons-panel
             class="fixed w-72 z-40 rounded-xl border border-gray-200 dark:border-zinc-700
                    bg-white dark:bg-zinc-900 shadow-xl p-3"
             :style="{
-              left: `${moreIconsPopupPos.left}px`,
-              top: `${moreIconsPopupPos.top}px`,
+              left: `${iosIconsPopupPos.left}px`,
+              top: `${iosIconsPopupPos.top}px`,
               transform: 'translateY(calc(-100% - 8px))',
             }"
           >
@@ -161,15 +162,18 @@
               <p class="text-[10px] uppercase tracking-wider text-zinc-400">More Icons</p>
               <button
                 class="text-zinc-400 hover:text-zinc-200 transition-colors"
-                title="Close icons popup"
-                @click="showMoreIcons = false"
+                title="Close more icons popup"
+                @click="showIosIconsPopup = false"
               >
                 <i class="fa-solid fa-xmark text-xs" />
               </button>
             </div>
-            <div class="grid grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-1">
+            <div v-if="iosIcons.length === 0" class="py-6 text-center text-xs text-gray-400 dark:text-zinc-500">
+              No more icons configured
+            </div>
+            <div v-else class="grid grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-1">
               <button
-                v-for="icon in moreFontAwesomeIcons"
+                v-for="icon in iosIcons"
                 :key="icon.icon"
                 class="h-9 rounded-lg text-xs flex items-center justify-center
                        text-gray-500 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700
@@ -202,9 +206,9 @@ const store = useEditorStore()
 
 const LS_KEY = 'fastee-left-panel-collapsed'
 const collapsed = ref(localStorage.getItem(LS_KEY) === 'true')
-const showMoreIcons = ref(false)
-const moreIconsPopupPos = ref({ left: 0, top: 0 })
-const moreFontAwesomeIcons = [
+const showIosIconsPopup = ref(false)
+const iosIconsPopupPos = ref({ left: 0, top: 0 })
+const iosIcons = [
   { label: 'Heart', icon: 'fa-heart', previewClass: 'fa-solid fa-heart' },
   { label: 'Star', icon: 'fa-star', previewClass: 'fa-solid fa-star' },
   { label: 'Bolt', icon: 'fa-bolt', previewClass: 'fa-solid fa-bolt' },
@@ -224,8 +228,7 @@ const moreFontAwesomeIcons = [
   { label: 'Check', icon: 'fa-circle-check', previewClass: 'fa-solid fa-circle-check' },
   { label: 'X Mark', icon: 'fa-circle-xmark', previewClass: 'fa-solid fa-circle-xmark' },
   { label: 'User', icon: 'fa-user', previewClass: 'fa-solid fa-user' },
-  { label: 'Play', icon: 'fa-play', previewClass: 'fa-solid fa-play' },
-  { label: 'Pause', icon: 'fa-pause', previewClass: 'fa-solid fa-pause' },
+  { label: 'Share', icon: 'fa-share-nodes', previewClass: 'fa-solid fa-share-nodes' },
 ]
 
 function toggleCollapsed() {
@@ -233,41 +236,48 @@ function toggleCollapsed() {
   localStorage.setItem(LS_KEY, String(collapsed.value))
 }
 
-function updateMoreIconsPopupPosition(triggerButton: HTMLElement): void {
+function updateIosIconsPopupPosition(triggerButton: HTMLElement): void {
   const rect = triggerButton.getBoundingClientRect()
   const popupWidth = 288
   const left = Math.min(
     Math.max(8, rect.right - popupWidth),
     window.innerWidth - popupWidth - 8,
   )
-  moreIconsPopupPos.value = {
+  iosIconsPopupPos.value = {
     left,
     top: rect.top,
   }
 }
 
-function toggleMoreIcons(event: MouseEvent): void {
+function toggleIosIconsPopup(event: MouseEvent): void {
   const target = event.currentTarget as HTMLElement | null
   if (!target) return
-  if (!showMoreIcons.value) {
-    updateMoreIconsPopupPosition(target)
-    showMoreIcons.value = true
+  if (!showIosIconsPopup.value) {
+    updateIosIconsPopupPosition(target)
+    showIosIconsPopup.value = true
     return
   }
-  showMoreIcons.value = false
+  showIosIconsPopup.value = false
 }
 
-function onClickOutsideMoreIcons(event: MouseEvent): void {
+function onClickOutsideIosIconsPopup(event: MouseEvent): void {
   const target = event.target as HTMLElement | null
-  if (target?.closest('[data-more-icons-popup]') || target?.closest('[data-more-icons-panel]')) return
-  showMoreIcons.value = false
+  if (target?.closest('[data-ios-more-popup]') || target?.closest('[data-ios-icons-panel]')) return
+  showIosIconsPopup.value = false
+}
+
+function onEscapeIosIconsPopup(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return
+  showIosIconsPopup.value = false
 }
 
 onMounted(() => {
-  document.addEventListener('click', onClickOutsideMoreIcons)
+  document.addEventListener('click', onClickOutsideIosIconsPopup)
+  document.addEventListener('keydown', onEscapeIosIconsPopup)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', onClickOutsideMoreIcons)
+  document.removeEventListener('click', onClickOutsideIosIconsPopup)
+  document.removeEventListener('keydown', onEscapeIosIconsPopup)
 })
 </script>

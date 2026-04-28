@@ -60,6 +60,7 @@ export const useEditorStore = defineStore('editor', () => {
   const isDirty          = ref(false)
   const exportFormat     = ref<'png' | 'jpeg'>('png')
   const exportQuality    = ref(0.92)
+  const exportScalePercent = ref(100)
   const textIconDefaultColor = ref<string>(initialTextIconDefaultColor())
   const activeEditorId = ref<string | null>(null)
   const editorLoadSource = ref<'local' | 'remote' | 'share'>('local')
@@ -150,6 +151,15 @@ export const useEditorStore = defineStore('editor', () => {
     if (!isValidHexColor(normalized)) return
     textIconDefaultColor.value = normalized
     localStorage.setItem(TEXT_ICON_DEFAULT_COLOR_KEY, normalized)
+  }
+
+  function clampExportScalePercent(value: number): number {
+    if (!Number.isFinite(value)) return 100
+    return Math.max(10, Math.min(500, Math.round(value)))
+  }
+
+  function setExportScalePercent(value: number): void {
+    exportScalePercent.value = clampExportScalePercent(value)
   }
 
   // ── History ────────────────────────────────────────────────────────────────
@@ -742,6 +752,39 @@ export const useEditorStore = defineStore('editor', () => {
     img.src = src
   }
 
+  function setImageAsBackground(id: string): void {
+    if (readOnly.value) return
+    const idx = elements.value.findIndex(el => el.id === id)
+    if (idx === -1) return
+
+    const el = elements.value[idx]
+    if (el.type !== 'image') return
+
+    const sourceW = el.sourceWidth ?? el.width
+    const sourceH = el.sourceHeight ?? el.height
+    if (sourceW <= 0 || sourceH <= 0) return
+
+    const { width: canvasW, height: canvasH } = canvasSize.value
+    const coverRatio = Math.max(canvasW / sourceW, canvasH / sourceH)
+    const nextW = Math.round(sourceW * coverRatio)
+    const nextH = Math.round(sourceH * coverRatio)
+
+    const updated: ImageElement = {
+      ...el,
+      width: nextW,
+      height: nextH,
+      x: Math.round((canvasW - nextW) / 2),
+      y: Math.round((canvasH - nextH) / 2),
+      rotation: 0,
+    }
+
+    elements.value[idx] = updated
+    moveElement(idx, 0)
+    selectedId.value = updated.id
+    isDirty.value = true
+    snapshot()
+  }
+
   function removeElement(id: string): void {
     if (readOnly.value) return
     elements.value = elements.value.filter(el => el.id !== id)
@@ -836,7 +879,7 @@ export const useEditorStore = defineStore('editor', () => {
     // state
     currentPlatform, currentImageType, currentTemplate,
     elements, selectedId, allTemplates,
-    isDirty, exportFormat, exportQuality, textIconDefaultColor, activeEditorId, editorLoadSource, readOnly,
+    isDirty, exportFormat, exportQuality, exportScalePercent, textIconDefaultColor, activeEditorId, editorLoadSource, readOnly,
     // computed
     selectedElement, templatesForPlatform, templatesForCurrentType,
     canUndo, canRedo, canvasSize,
@@ -845,7 +888,8 @@ export const useEditorStore = defineStore('editor', () => {
     loadTemplate, createCustomTemplate, selectElement, updateElement, commitElementUpdate,
     addTextElement, addTitleElement, addSubtitleElement, duplicateElement,
     addRectangleElement, addCircleElement, addIconElement, addSocialButtonPreset, resetToTemplateDefaults,
-    addImageElement, removeElement, setTextIconDefaultColor,
+    addImageElement, removeElement, setTextIconDefaultColor, setExportScalePercent,
+    setImageAsBackground,
     reorderElement, setElementOrder, bringToFront, sendToBack, bringForward, sendBackward,
     undo, redo, clearSelection,
     loadSharedSnapshot, loadRemoteEditorSnapshot, setActiveEditorId, setEditorLoadSource, setReadOnly,

@@ -1,0 +1,2 @@
+- apply basic filter for image
+- downscale/upscale image keep aspect ratio

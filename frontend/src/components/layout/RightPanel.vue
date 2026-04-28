@@ -161,6 +161,14 @@
         v-if="contextMenuLayer?.type === 'image'"
         type="button"
         class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="onSetAsBackground"
+      >
+        Set as background
+      </button>
+      <button
+        v-if="contextMenuLayer?.type === 'image'"
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
         @click="onFlipHorizontal"
       >
         Flip horizontal
@@ -960,7 +968,7 @@ function onLayerDragEnd(): void {
 
 function openLayerContextMenu(e: MouseEvent, layerId: string): void {
   const layer = store.elements.find(el => el.id === layerId)
-  const itemCount = layer?.type === 'image' ? 6 : 4
+  const itemCount = layer?.type === 'image' ? 7 : 4
   const menuHeight = itemCount * 32 + 8
   store.selectElement(layerId)
   contextMenu.value = {
@@ -993,6 +1001,13 @@ function onRotate180(): void {
   if (!layer) return
   const nextRotation = ((layer.rotation ?? 0) + 180) % 360
   store.commitElementUpdate(layer.id, { rotation: nextRotation })
+  closeLayerContextMenu()
+}
+
+function onSetAsBackground(): void {
+  const layer = contextMenuLayer.value
+  if (!layer || layer.type !== 'image') return
+  store.setImageAsBackground(layer.id)
   closeLayerContextMenu()
 }
 

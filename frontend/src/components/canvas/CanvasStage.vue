@@ -106,6 +106,14 @@
         v-if="selectedContextElement?.type === 'image'"
         type="button"
         class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
+        @click="setSelectedElementAsBackground"
+      >
+        Set as background
+      </button>
+      <button
+        v-if="selectedContextElement?.type === 'image'"
+        type="button"
+        class="w-full text-left px-2 py-1.5 rounded text-xs text-zinc-200 hover:bg-zinc-800"
         @click="flipSelectedElementHorizontal"
       >
         Flip horizontal
@@ -261,7 +269,7 @@ const { stage, layer, init, syncElements, syncBackground } = useCanvas(
     onElementContextMenu(id, x, y) {
       if (store.readOnly) return
       const contextElement = store.elements.find(el => el.id === id)
-      const itemCount = contextElement?.type === 'image' ? 6 : 4
+      const itemCount = contextElement?.type === 'image' ? 7 : 4
       const menuHeight = itemCount * 32 + 8
       store.selectElement(id)
       elementContextMenu.value = {
@@ -477,6 +485,13 @@ function rotateSelectedElement180(): void {
   if (!el) return
   const nextRotation = ((el.rotation ?? 0) + 180) % 360
   store.commitElementUpdate(el.id, { rotation: nextRotation })
+  closeElementContextMenu()
+}
+
+function setSelectedElementAsBackground(): void {
+  const el = selectedContextElement.value
+  if (!el || el.type !== 'image') return
+  store.setImageAsBackground(el.id)
   closeElementContextMenu()
 }
 

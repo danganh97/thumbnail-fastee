@@ -56,10 +56,36 @@
           </div>
         </Transition>
 
-        <!-- Pixel ratio info -->
-        <p class="text-xs text-gray-400 dark:text-zinc-500">
-          Exports at 2× pixel ratio for crisp high-resolution output.
-        </p>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
+            Scale — {{ scalePercent }}%
+          </label>
+          <div class="flex items-center gap-3">
+            <input
+              v-model.number="scalePercent"
+              type="range"
+              min="10"
+              max="500"
+              step="1"
+              class="w-full accent-brand-500"
+            />
+            <input
+              v-model.number="scalePercent"
+              type="number"
+              min="10"
+              max="500"
+              step="1"
+              class="input-field w-20 text-xs text-right"
+            />
+          </div>
+          <div class="flex justify-between text-xs text-gray-400 dark:text-zinc-500 mt-1">
+            <span>10%</span>
+            <span>500%</span>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-zinc-400 mt-2">
+            Output: {{ outputWidth }} x {{ outputHeight }} px
+          </p>
+        </div>
       </div>
 
       <!-- Footer -->
@@ -67,7 +93,7 @@
         <button class="flex-1 btn-ghost text-sm" @click="emit('close')">Cancel</button>
         <button
           class="flex-1 btn-primary flex items-center justify-center gap-2 text-sm"
-          @click="emit('download', format, quality)"
+          @click="emit('download', format, quality, scalePercent)"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -81,17 +107,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useEditorStore } from '@/store/editor'
 
 const store = useEditorStore()
 
 const format  = ref<'png' | 'jpeg'>(store.exportFormat)
 const quality = ref(store.exportQuality)
+const scalePercent = ref(store.exportScalePercent)
+
+const outputWidth = computed(() =>
+  Math.round(store.canvasSize.width * (scalePercent.value / 100)),
+)
+const outputHeight = computed(() =>
+  Math.round(store.canvasSize.height * (scalePercent.value / 100)),
+)
+
+watch(scalePercent, value => {
+  if (!Number.isFinite(value)) {
+    scalePercent.value = 100
+    return
+  }
+  const clamped = Math.max(10, Math.min(500, Math.round(value)))
+  if (clamped !== value) scalePercent.value = clamped
+})
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'download', format: 'png' | 'jpeg', quality: number): void
+  (e: 'download', format: 'png' | 'jpeg', quality: number, scalePercent: number): void
 }>()
 </script>
 

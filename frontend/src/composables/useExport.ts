@@ -7,6 +7,11 @@ interface ExportOptions {
 }
 
 export function useExport() {
+  function safePixelRatio(value: number | undefined): number {
+    if (!Number.isFinite(value)) return 2
+    return Math.max(0.1, Math.min(5, value as number))
+  }
+
   function downloadFromDataUrl(dataUrl: string, filename: string): void {
     const link = document.createElement('a')
     link.href = dataUrl
@@ -22,9 +27,10 @@ export function useExport() {
     options: ExportOptions = {},
   ): void {
     const { format = 'png', pixelRatio = 2, quality = 0.92 } = options
+    const normalizedPixelRatio = safePixelRatio(pixelRatio)
 
     const dataUrl = stage.toDataURL({
-      pixelRatio,
+      pixelRatio: normalizedPixelRatio,
       mimeType: format === 'jpeg' ? 'image/jpeg' : 'image/png',
       quality,
     })
@@ -41,10 +47,11 @@ export function useExport() {
     options: ExportOptions = {},
   ): Promise<Blob> {
     const { format = 'png', pixelRatio = 2, quality = 0.92 } = options
+    const normalizedPixelRatio = safePixelRatio(pixelRatio)
 
     return new Promise((resolve, reject) => {
       stage.toBlob({
-        pixelRatio,
+        pixelRatio: normalizedPixelRatio,
         mimeType: format === 'jpeg' ? 'image/jpeg' : 'image/png',
         quality,
         callback: (blob: Blob | null) => {

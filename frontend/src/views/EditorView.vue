@@ -275,6 +275,7 @@ function quickSaveExport(): void {
     exportStage(stage, store.currentTemplate!.name, {
       format: store.exportFormat,
       quality: store.exportQuality,
+      pixelRatio: store.exportScalePercent / 100,
     })
   })
 }
@@ -821,16 +822,18 @@ async function hydrateFromRoute(): Promise<void> {
 }
 
 // ── Export ────────────────────────────────────────────────────────────────
-function handleExport(format: 'png' | 'jpeg', quality: number): void {
+function handleExport(format: 'png' | 'jpeg', quality: number, scalePercent: number): void {
   const stage = canvasStageRef.value?.stage as Konva.Stage | null | undefined
   if (!stage || !store.currentTemplate) return
 
   store.clearSelection()
   store.exportFormat = format
   store.exportQuality = quality
+  store.setExportScalePercent(scalePercent)
+  const pixelRatio = store.exportScalePercent / 100
 
   requestAnimationFrame(() => {
-    exportStage(stage, store.currentTemplate!.name, { format, quality })
+    exportStage(stage, store.currentTemplate!.name, { format, quality, pixelRatio })
     showExportModal.value = false
   })
 }
