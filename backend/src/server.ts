@@ -24,12 +24,35 @@ if (envPath) {
 
 const app = express()
 const PORT = process.env.PORT ?? 3000
-const frontendBaseUrl = process.env.FRONTEND_BASE_URL ?? 'http://localhost:5173'
 
-app.use(cors({
-  origin: [frontendBaseUrl, 'http://127.0.0.1:5173'],
-  credentials: true,
-}))
+function normalizeOrigin(url: string): string {
+  return url.trim().replace(/\/$/, '')
+}
+
+const primaryFrontend = normalizeOrigin(
+  process.env.FRONTEND_BASE_URL ?? 'http://localhost:5173',
+)
+const extraOrigins = (process.env.FRONTEND_EXTRA_ORIGINS ?? '')
+  .split(',')
+  .map(s => normalizeOrigin(s))
+  .filter(Boolean)
+
+const corsOrigins = Array.from(
+  new Set([
+    primaryFrontend,
+    ...extraOrigins,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://[::1]:5173',
+  ]),
+)
+
+app.use(
+  cors({
+    origin: corsOrigins,
+    credentials: true,
+  }),
+)
 app.use(cookieParser())
 app.use(express.json({ limit: '2mb' }))
 app.use(attachAuthUser)

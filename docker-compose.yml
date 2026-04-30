@@ -1,29 +1,92 @@
 services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: thumb-frontend
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - CHOKIDAR_USEPOLLING=true
-      - VITE_API_URL=http://localhost:3000
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
-    depends_on:
-      - backend
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     args:
+  #       VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+  #   container_name: thumb-frontend-prod
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5173:80"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 10s
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: thumb-backend
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: thumb-backend-prod
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     NODE_ENV: production
+  #     PORT: 3000
+  #     FRONTEND_BASE_URL: ${DOCKER_FRONTEND_BASE_URL:-http://localhost:5173}
+  #     COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  #     MYSQL_HOST: mysql
+  #     MYSQL_PORT: 3306
+  #     MYSQL_USER: thumbnail
+  #     MYSQL_PASSWORD: thumbnail_password
+  #     MYSQL_DATABASE: ${MYSQL_DATABASE:-thumbnail_fastee}
+  #     REDIS_URL: redis://redis:6379
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 20s
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    container_name: thumb-mysql-prod
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-thumbnail_fastee}
+      MYSQL_USER: thumbnail
+      MYSQL_PASSWORD: thumbnail_password
     ports:
-      - "3000:3000"
+      - "3306:3306"
     volumes:
-      - ./backend:/app
-      - /app/node_modules
-    command: sh -c "npm install && npm run dev"
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p${MYSQL_ROOT_PASSWORD:-root_password} --silent"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: thumb-redis-prod
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  mysql_data:
+  redis_data:

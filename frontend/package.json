@@ -16,10 +16,16 @@
     "konva": "^9.3.3",
     "pinia": "^2.1.7",
     "qrcode": "^1.5.4",
-    "uuid": "^9.0.0",
+    "uuid": "^14.0.0",
     "vue": "^3.4.15",
     "vue-konva": "^3.0.2",
     "vue-router": "^4.6.4"
+  },
+  "optionalDependencies": {
+    "@esbuild/darwin-arm64": "^0.21.5",
+    "@esbuild/darwin-x64": "^0.21.5",
+    "@rollup/rollup-darwin-arm64": "^4.60.2",
+    "@rollup/rollup-darwin-x64": "^4.60.2"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",
@@ -30,7 +36,7 @@
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3",
-    "vite": "^5.0.12",
+    "vite": "^5.4.21",
     "vue-tsc": "^3.2.7"
   }
 }

@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import dotenv from 'dotenv'
 import { Sequelize } from 'sequelize'
+import mysql2 from 'mysql2'
 
 const envCandidates = [
   path.resolve(__dirname, '../../../.env'),
@@ -26,6 +27,7 @@ export const sequelize = new Sequelize(
     host: process.env.MYSQL_HOST ?? '127.0.0.1',
     port: envNumber('MYSQL_PORT', 3306),
     dialect: 'mysql',
+    dialectModule: mysql2,
     logging: false,
     pool: {
       max: envNumber('MYSQL_CONNECTION_LIMIT', 10),
