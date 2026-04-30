@@ -230,16 +230,17 @@ interface BreadcrumbItem {
 }
 
 const recentItems = ref<RecentItem[]>([])
+const isCustomEditingMode = computed(() => {
+  const queryTemplate = typeof route.query.template === 'string' ? route.query.template : undefined
+  return queryTemplate === 'custom' || Boolean(store.currentTemplate?.id.startsWith('custom_'))
+})
 const editorBreadcrumbs = computed<BreadcrumbItem[]>(() => {
   const currentPlatform = store.currentPlatform?.id
   const currentType = store.currentImageType?.id
-  const queryTemplate = typeof route.query.template === 'string' ? route.query.template : undefined
   const queryW = typeof route.query.customW === 'string' ? Number(route.query.customW) : undefined
   const queryH = typeof route.query.customH === 'string' ? Number(route.query.customH) : undefined
 
-  const isCustom =
-    queryTemplate === 'custom'
-    || store.currentTemplate?.id.startsWith('custom_')
+  const isCustom = isCustomEditingMode.value
 
   if (isCustom) {
     const width = Number.isFinite(queryW) ? Math.round(queryW as number) : store.currentTemplate?.width ?? 1080

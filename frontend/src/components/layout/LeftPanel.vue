@@ -22,48 +22,50 @@
 
     <!-- Panel content — hidden when collapsed -->
     <div v-show="!collapsed" class="flex flex-col min-h-0 flex-1">
-      <!-- Context: current platform + image type -->
-      <div v-if="store.currentImageType" class="px-4 pb-2">
-        <div class="flex items-center gap-2 text-xs">
-          <span class="text-gray-400 dark:text-zinc-500">{{ store.currentPlatform?.label }}</span>
-          <span class="text-gray-300 dark:text-zinc-700">/</span>
-          <span class="font-medium text-brand-500">{{ store.currentImageType.label }}</span>
-        </div>
-        <p class="text-xs text-gray-400 dark:text-zinc-600 mt-0.5">
-          {{ store.currentImageType.width }}×{{ store.currentImageType.height }}
-        </p>
-      </div>
-
-      <div class="h-px bg-gray-100 dark:bg-zinc-800 mx-4 my-1" />
-
-      <!-- Templates -->
-      <div class="flex-1 overflow-y-auto min-h-0">
-        <p class="section-label">Templates</p>
-
-        <div
-          v-if="!store.currentImageType"
-          class="px-4 py-6 text-center text-gray-400 dark:text-zinc-600 text-sm"
-        >
-          No image type selected
+      <template v-if="!isCustomEditingMode">
+        <!-- Context: current platform + image type -->
+        <div v-if="store.currentImageType" class="px-4 pb-2">
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-gray-400 dark:text-zinc-500">{{ store.currentPlatform?.label }}</span>
+            <span class="text-gray-300 dark:text-zinc-700">/</span>
+            <span class="font-medium text-brand-500">{{ store.currentImageType.label }}</span>
+          </div>
+          <p class="text-xs text-gray-400 dark:text-zinc-600 mt-0.5">
+            {{ store.currentImageType.width }}×{{ store.currentImageType.height }}
+          </p>
         </div>
 
-        <div
-          v-else-if="store.templatesForCurrentType.length === 0"
-          class="px-4 py-6 text-center text-gray-400 dark:text-zinc-600 text-sm"
-        >
-          No templates found
-        </div>
+        <div class="h-px bg-gray-100 dark:bg-zinc-800 mx-4 my-1" />
 
-        <div v-else class="px-3 pb-4 grid grid-cols-1 gap-2">
-          <TemplateCard
-            v-for="tpl in store.templatesForCurrentType"
-            :key="tpl.id"
-            :template="tpl"
-            :is-active="store.currentTemplate?.id === tpl.id"
-            @select="store.loadTemplate($event)"
-          />
+        <!-- Templates -->
+        <div class="flex-1 overflow-y-auto min-h-0">
+          <p class="section-label">Templates</p>
+
+          <div
+            v-if="!store.currentImageType"
+            class="px-4 py-6 text-center text-gray-400 dark:text-zinc-600 text-sm"
+          >
+            No image type selected
+          </div>
+
+          <div
+            v-else-if="store.templatesForCurrentType.length === 0"
+            class="px-4 py-6 text-center text-gray-400 dark:text-zinc-600 text-sm"
+          >
+            No templates found
+          </div>
+
+          <div v-else class="px-3 pb-4 grid grid-cols-1 gap-2">
+            <TemplateCard
+              v-for="tpl in store.templatesForCurrentType"
+              :key="tpl.id"
+              :template="tpl"
+              :is-active="store.currentTemplate?.id === tpl.id"
+              @select="store.loadTemplate($event)"
+            />
+          </div>
         </div>
-      </div>
+      </template>
 
       <!-- Quick add + image upload (when template loaded) -->
       <template v-if="store.currentTemplate">
@@ -197,12 +199,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useEditorStore } from '@/store/editor'
 import TemplateCard       from '@/components/ui/TemplateCard.vue'
 import ImageUploadPanel   from '@/components/ui/ImageUploadPanel.vue'
 
 const store = useEditorStore()
+const isCustomEditingMode = computed(() => Boolean(store.currentTemplate?.id.startsWith('custom_')))
 
 const LS_KEY = 'fastee-left-panel-collapsed'
 const collapsed = ref(localStorage.getItem(LS_KEY) === 'true')
